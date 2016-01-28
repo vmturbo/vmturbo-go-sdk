@@ -24,11 +24,11 @@ func (cmb *ClientMessageBuilder) Create() *MediationClientMessage {
 	return cmb.clientMessage
 }
 
-// Set the ContainerInfo of the ClientMessage if necessary.
-func (cmb *ClientMessageBuilder) SetContainerInfo(containerInfo *ContainerInfo) *ClientMessageBuilder {
-	cmb.clientMessage.ContainerInfo = containerInfo
-	return cmb
-}
+// // Set the ContainerInfo of the ClientMessage if necessary.
+// func (cmb *ClientMessageBuilder) SetContainerInfo(containerInfo *ContainerInfo) *ClientMessageBuilder {
+// 	cmb.clientMessage.ContainerInfo = containerInfo
+// 	return cmb
+// }
 
 // set the validation response
 func (cmb *ClientMessageBuilder) SetValidationResponse(validationResponse *ValidationResponse) *ClientMessageBuilder {
@@ -65,8 +65,6 @@ type AccountDefEntryBuilder struct {
 	accountDefEntry *AccountDefEntry
 }
 
-// A NewAccountDefEntryBuilder function creates a AccountDefEntry struct and sets its member
-// variables equal to the passed arguments
 func NewAccountDefEntryBuilder(name, displayName, description, verificationRegex string,
 	entryType AccountDefEntry_AccountDefEntryType, isSecret bool) *AccountDefEntryBuilder {
 	accountDefEntry := &AccountDefEntry{
@@ -82,7 +80,6 @@ func NewAccountDefEntryBuilder(name, displayName, description, verificationRegex
 	}
 }
 
-// A Create method returns the accountDefEntry of the object it is called on
 func (builder *AccountDefEntryBuilder) Create() *AccountDefEntry {
 	return builder.accountDefEntry
 }

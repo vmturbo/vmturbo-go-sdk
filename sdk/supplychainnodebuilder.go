@@ -27,12 +27,10 @@ func (scnb *SupplyChainNodeBuilder) Entity(entityType EntityDTO_EntityType) *Sup
 	var commBought []*TemplateDTO_CommBoughtProviderProp
 	templateType := TemplateDTO_BASE
 	priority := int32(0)
-	autoCreate := false
 	scnb.entityTemplate = &TemplateDTO{
 		TemplateClass:    &entityType,
 		TemplateType:     &templateType,
 		TemplatePriority: &priority,
-		AutoCreate:       &autoCreate,
 		CommoditySold:    commSold,
 		CommodityBought:  commBought,
 	}
@@ -66,14 +64,12 @@ func (scnb *SupplyChainNodeBuilder) requireProvider() bool {
 }
 
 // The very basic selling method. If want others, use other names
-func (scnb *SupplyChainNodeBuilder) Selling(comm CommodityDTO_CommodityType) *SupplyChainNodeBuilder {
+func (scnb *SupplyChainNodeBuilder) Selling(comm CommodityDTO_CommodityType, key string) *SupplyChainNodeBuilder {
 	if hasEntityTemplate := scnb.requireEntityTemplate(); !hasEntityTemplate {
 		//TODO should give error
 		return scnb
 	}
 
-	// In this selling, key is set to empty
-	key := ""
 	// Add commodity sold
 	templateComm := &TemplateCommodity{
 		Key:           &key,
