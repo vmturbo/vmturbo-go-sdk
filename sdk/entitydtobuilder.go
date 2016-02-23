@@ -42,6 +42,19 @@ func (eb *EntityDTOBuilder) DisplayName(disp string) *EntityDTOBuilder {
 	return eb
 }
 
+func (eb *EntityDTOBuilder) SellsCommodity(commDTO *CommodityDTO) *EntityDTOBuilder {
+	commSold := eb.entity.CommoditiesSold
+	commSold = append(commSold, commDTO)
+	eb.entity.CommoditiesSold = commSold
+	return eb
+}
+
+func (eb *EntityDTOBuilder) SellsCommodities(commDTOs []*CommodityDTO) {
+	commSold := eb.entity.CommoditiesSold
+	commSold = append(commSold, commDTOs...)
+	eb.entity.CommoditiesSold = commSold
+}
+
 func (eb *EntityDTOBuilder) Sells(commodityType CommodityDTO_CommodityType, key string) *EntityDTOBuilder {
 	commDTO := new(CommodityDTO)
 	commDTO.CommodityType = &commodityType
@@ -106,6 +119,15 @@ func (eb *EntityDTOBuilder) Buys(commodityType CommodityDTO_CommodityType, key s
 	commDTO.Key = &key
 	commDTO.Capacity = &defaultCapacity
 	commDTO.Used = &used
+	eb.BuysCommodity(commDTO)
+	return eb
+}
+
+func (eb *EntityDTOBuilder) BuysCommodity(commDTO *CommodityDTO) *EntityDTOBuilder {
+	if eb.currentProvider == nil {
+		// TODO should have error message. Notify set current provider first
+		return eb
+	}
 
 	// add commodity bought
 	commBought := eb.entity.GetCommoditiesBought()
