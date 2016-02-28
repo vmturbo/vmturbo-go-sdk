@@ -2,12 +2,11 @@ package communicator
 
 import (
 	"encoding/base64"
-	"net/http"
-	"time"
-
 	"github.com/golang/glog"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/websocket"
+	"net/http"
+	"time"
 )
 
 // An interface to handle server request.
@@ -102,11 +101,11 @@ func (wsc *WebSocketCommunicator) RegisterAndListen(containerInfo *ContainerInfo
 	if err != nil {
 		glog.Fatal(err)
 	}
-	usrpasswd := []byte(wsc.ServerUsername + ":" + wsc.ServerPassword)
-
+	message := wsc.ServerUsername + ":" + wsc.ServerPassword
+	usrpasswd := make([]byte, base64.StrEncoding.EncodedLen(len(wsc.ServerUsername+":"+wsc.ServerPassword)))
 	config.Header = make(http.Header)
-	config.Header["Authorization"] = []string{"Basic " + base64.StdEncoding.EncodeToString(usrpasswd)}
-
+	//	config.Header["Authorization"] = []string{"Basic administrator:a"}
+	config.Header.Set("Authorization", "Basic "+base64.StdEncoding.Encode(usrpasswd, []byte(message)))
 	webs, err := websocket.DialConfig(config)
 
 	// webs, err := websocket.Dial(vmtServerUrl, "", localAddr)

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/vmturbo/vmturbo-go-sdk/communicator"
+	"github.com/pamelasanchezvi/vmturbo-go-sdk/communicator"
 )
 
 type Handler struct {
