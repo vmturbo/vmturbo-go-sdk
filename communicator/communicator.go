@@ -104,9 +104,9 @@ func (wsc *WebSocketCommunicator) RegisterAndListen(containerInfo *ContainerInfo
 	}
 	usrpasswd := []byte(wsc.ServerUsername + ":" + wsc.ServerPassword)
 
-	config.Header = http.Header{
-		"Authorization": {"Basic " + base64.StdEncoding.EncodeToString(usrpasswd)},
-	}
+	config.Header = make(http.Header)
+	config.Header["Authorization"] = []string{"Basic " + base64.StdEncoding.EncodeToString(usrpasswd)}
+
 	webs, err := websocket.DialConfig(config)
 
 	// webs, err := websocket.Dial(vmtServerUrl, "", localAddr)
