@@ -2,15 +2,31 @@ package main
 
 import (
 	"fmt"
-	"github.com/pamelasanchezvi/vmturbo-go-sdk/communicator"
+	"github.com/vmturbo/vmturbo-go-sdk/communicator"
+	//	"github.com/pamelasanchezvi/vmturbo-go-sdk/communicator"
 )
 
-type Handler struct {
-	// TODO
+// Struct which hold identifying information for connecting to the VMTServer
+type ConnectionInfo struct {
+	ServerAddr         string
+	LocalAddr          string
+	Type               string
+	OpsManagerUsername string
+	OpsManagerPassword string
 }
 
-func (h Handler) AddTarget() {
-	// TODO
+// implementation of communicator.ServerMessageHandler interface
+type MsgHandler struct {
+	wscommunicator *communicator.WebSocketCommunicator
+	cInfo          *ConnectionInfo
+}
+
+func (h *MsgHandler) AddTarget() {
+	configMap := make(map[string]string)
+	configMap["Username"] = h.OpsManagerUsername
+	configMap["Password"] = h.OpsManagerPassword
+	vmtServer := h.wscommunicator.VmtServerAddress
+	// call vmtREST api
 	fmt.Println("add target called")
 
 }
@@ -31,49 +47,39 @@ func (h Handler) HandleAction(serverMsg *communicator.MediationServerMessage) {
 
 }
 
+// Function Creates ContainerInfo struct, sets Kubernetes Container Probe Information
+// Returns pointer to newly created ContainerInfo
 func CreateContainerInfo() *communicator.ContainerInfo {
-	strtype := new(string)
-	strcat := new(string)
-	*strtype = "type1"
-	*strcat = "cat1"
-
+	strtype := "Kubernetes"
+	strcat := "Container"
+	//create the ProbeInfo struct with only type and category fields
 	probeInfo := &communicator.ProbeInfo{
-		ProbeType:     strtype,
-		ProbeCategory: strcat,
+		ProbeType:     &strtype,
+		ProbeCategory: &strcat,
 		// SupplyChainDefinitionSet
 		// AccountDefinition
 		// XXX_unrecognized
 	}
+	// Create container
 	containerInfo := new(communicator.ContainerInfo)
+	// Add probe to array of ProbeInfo* in container
 	probes := append(containerInfo.Probes, probeInfo)
 	containerInfo.Probes = probes
-
-	// set the MediationClientMessage member variables
-
-	//m := &communicator.MediationClientMessage{
-	//      ValidationResponse:     ,
-	//      DiscoveryResponse:      ,
-	//      KeepAlive:      ,
-	//      ActionProgress:         ,
-	//      MessageID:      ,
-	//}
 	return containerInfo
 }
 
 func main() {
 
 	wsCommunicator := new(communicator.WebSocketCommunicator)
-	wsCommunicator.VmtServerAddress = "192.168.1.105:9400"
-	// ex: "ws://172.16.162.244"
+	wsCommunicator.VmtServerAddress = "10.10.200.98:8080"
 	wsCommunicator.LocalAddress = "ws://172.16.162.131"
-
-	wsCommunicator.ServerUsername = "administrator"
-	wsCommunicator.ServerPassword = "a"
-	// ServerMessageHandler is implemented by Handler for now
-	// set wsCommnunicator.ServerMsgHandler = ....
-	msgHandler := new(Handler)
+	wsCommunicator.ServerUsername = "vmtRemoteMediation"
+	wsCommunicator.ServerPassword = "vmtRemoteMediation"
+	// ServerMessageHandler is implemented by MsgHandler
+	msgHandler := new(MsgHandler)
+	msgHandler.wscommunicator = wsCommunicator
 	wsCommunicator.ServerMsgHandler = *msgHandler
-	//	registrationMessage := CreateMediationClientMessage()
+
 	containerInfo := CreateContainerInfo()
 	fmt.Println("created container info ")
 	wsCommunicator.RegisterAndListen(containerInfo)
