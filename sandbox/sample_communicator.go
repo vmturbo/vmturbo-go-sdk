@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/vmturbo/vmturbo-go-sdk/communicator"
+	"io/ioutil"
+	"net/http"
 	//	"github.com/pamelasanchezvi/vmturbo-go-sdk/communicator"
 )
 
@@ -31,13 +34,36 @@ type VMTApiRequestHandler struct {
 	opsManagerPassword string
 }
 
-func (VMTApiRequestHandler *vmtapi) VmtApiPost(postPath, requestStr string) (*http.Response, error) {
+func (vmtapi *VMTApiRequestHandler) parseResponse(resp *http.Response) (string, error) {
+	if resp == nil {
+		return "", fmt.Errorf("response passed as argument is nil")
+	}
+	content, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
+}
+
+func (vmtapi *VMTApiRequestHandler) vmtApiPost(postPath, requestStr string) (*http.Response, error) {
 	fullUrl := "http://" + vmtapi.vmtServerAddr + "/vmturbo/api" + postPath + requestStr
+	fmt.Println("Log: The ful Url is " + fullUrl)
+	req, err := http.NewRequest("POST", fullUrl, nil)
+	req.SetBasicAuth(vmtapi.opsManagerUsername, vmtapi.opsManagerPassword)
+	client := &http.Client{}
+	response, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Log: error getting response")
+		return nil, err
+	}
+	//responseContent, _ := vmtapi.parsePostResponse(resp)
+	defer response.Body.Close()
+	return response, nil
 }
 
 func (h *MsgHandler) AddTarget() {
 
-	vMTApiRequestHandler = new(VMTApiRequestHandler)
+	vMTApiRequestHandler := new(VMTApiRequestHandler)
 	vMTApiRequestHandler.vmtServerAddr = h.wscommunicator.VmtServerAddress
 	vMTApiRequestHandler.opsManagerUsername = h.cInfo.OpsManagerUsername
 	vMTApiRequestHandler.opsManagerPassword = h.cInfo.OpsManagerPassword
@@ -50,19 +76,26 @@ func (h *MsgHandler) AddTarget() {
 	requestDataB.WriteString("&")
 	requestDataB.WriteString("nameOrAddress=")
 	requestDataB.WriteString(h.cInfo.Name)
-	request.DataB.WriteString("&")
+	requestDataB.WriteString("&")
 	requestDataB.WriteString("username=")
 	requestDataB.WriteString(h.cInfo.Username)
 	requestDataB.WriteString("&")
 	requestDataB.WriteString("targetIdentifier=")
 	requestDataB.WriteString(h.cInfo.TargetIdentifier)
 	requestDataB.WriteString("&")
-	requestDataB.WriteString("password")
+	requestDataB.WriteString("password=")
 	requestDataB.WriteString(h.cInfo.Password)
 	str := requestDataB.String()
-	postReply, err := vmtApiPost()
-	fmt.Println("add target called")
-
+	postReply, err := vMTApiRequestHandler.vmtApiPost("/externaltargets", str)
+	if err != nil {
+		fmt.Println(" postReply error")
+	}
+	fmt.Println(postReply)
+	postReplyMessage, err := vMTApiRequestHandler.parseResponse(postReply)
+	if err != nil {
+		fmt.Println(" postReplyMessage error")
+	}
+	fmt.Println("Add target response is " + postReplyMessage)
 }
 
 func (h *MsgHandler) Validate(serverMsg *communicator.MediationServerMessage) {
@@ -113,9 +146,9 @@ func main() {
 	loginInfo.OpsManagerUsername = "administrator"
 	loginInfo.OpsManagerPassword = "a"
 	loginInfo.Type = "Kubernetes"
-	loginInfo.Name = "kube_vmt"
+	loginInfo.Name = "k8s_vmt"
 	loginInfo.Username = "kubernetes_user"
-	loginInfo.Password = "password"
+	loginInfo.Password = "fake_password"
 	loginInfo.TargetIdentifier = "my_k8s"
 	// ServerMessageHandler is implemented by MsgHandler
 	msgHandler := new(MsgHandler)
