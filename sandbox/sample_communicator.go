@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/vmturbo/vmturbo-go-sdk/communicator"
-	"io/ioutil"
+	//	"io/ioutil"
 	"net/http"
 	//	"github.com/pamelasanchezvi/vmturbo-go-sdk/communicator"
 )
@@ -26,6 +26,7 @@ type ConnectionInfo struct {
 type MsgHandler struct {
 	wscommunicator *communicator.WebSocketCommunicator
 	cInfo          *ConnectionInfo
+	vmtapi         *VMTApiRequestHandler
 }
 
 type VMTApiRequestHandler struct {
@@ -34,6 +35,7 @@ type VMTApiRequestHandler struct {
 	opsManagerPassword string
 }
 
+/*
 func (vmtapi *VMTApiRequestHandler) parseResponse(resp *http.Response) (string, error) {
 	if resp == nil {
 		return "", fmt.Errorf("response passed as argument is nil")
@@ -43,7 +45,7 @@ func (vmtapi *VMTApiRequestHandler) parseResponse(resp *http.Response) (string, 
 		return "", err
 	}
 	return string(content), nil
-}
+}*/
 
 func (vmtapi *VMTApiRequestHandler) vmtApiPost(postPath, requestStr string) (*http.Response, error) {
 	fullUrl := "http://" + vmtapi.vmtServerAddr + "/vmturbo/api" + postPath + requestStr
@@ -63,10 +65,6 @@ func (vmtapi *VMTApiRequestHandler) vmtApiPost(postPath, requestStr string) (*ht
 
 func (h *MsgHandler) AddTarget() {
 
-	vMTApiRequestHandler := new(VMTApiRequestHandler)
-	vMTApiRequestHandler.vmtServerAddr = h.wscommunicator.VmtServerAddress
-	vMTApiRequestHandler.opsManagerUsername = h.cInfo.OpsManagerUsername
-	vMTApiRequestHandler.opsManagerPassword = h.cInfo.OpsManagerPassword
 	//vmtServer := h.wscommunicator.VmtServerAddress
 	// call vmtREST api
 	// h.cInfo.Type h.cInfo.Name h.cInfo.Username h.cInfo.Password , h.cInfo.TargetIdentifier
@@ -86,22 +84,43 @@ func (h *MsgHandler) AddTarget() {
 	requestDataB.WriteString("password=")
 	requestDataB.WriteString(h.cInfo.Password)
 	str := requestDataB.String()
-	postReply, err := vMTApiRequestHandler.vmtApiPost("/externaltargets", str)
+	postReply, err := h.vmtapi.vmtApiPost("/externaltargets", str)
 	if err != nil {
 		fmt.Println(" postReply error")
 	}
+	fmt.Println("Printing AddTarget postReply:")
 	fmt.Println(postReply)
-	postReplyMessage, err := vMTApiRequestHandler.parseResponse(postReply)
-	if err != nil {
+	//	postReplyMessage, err := vMTApiRequestHandler.parseResponse(postReply)
+
+	if postReply.Status != "200 OK" {
 		fmt.Println(" postReplyMessage error")
 	}
-	fmt.Println("Add target response is " + postReplyMessage)
+	fmt.Println("Add target response is " + postReply.Status)
 }
 
 func (h *MsgHandler) Validate(serverMsg *communicator.MediationServerMessage) {
-	// TODO
 	fmt.Println("validate called")
+	// messageID is a int32 , if nil then 0
+	messageID := serverMsg.GetMessageID()
+	validationResponse := new(communicator.ValidationResponse)
+	// add something in validation response fields?? TODO
 
+	// creates a ClientMessageBuilder and sets ClientMessageBuilder.clientMessage.MessageID = messageID
+	// sets clientMessage.ValidationResponse = validationResponse
+	// type of clientMessage is MediationClientMessage
+	clientMsg := communicator.NewClientMessageBuilder(messageID).SetValidationResponse(validationResponse).Create()
+	h.wscommunicator.SendClientMessage(clientMsg)
+	// discover TODO
+	//  handler.meta.NameOrAddress passed to discoverTarget
+	postReply, err := h.vmtapi.vmtApiPost("/targets/"+h.cInfo.Name, "")
+	if err != nil {
+		fmt.Println(" error in validate response from server")
+		return
+	}
+
+	fmt.Println("Printing Validate postReply:")
+	fmt.Println(postReply)
+	return
 }
 func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMessage) {
 	// TODO
@@ -154,6 +173,11 @@ func main() {
 	msgHandler := new(MsgHandler)
 	msgHandler.wscommunicator = wsCommunicator
 	msgHandler.cInfo = loginInfo
+	vMTApiRequestHandler := new(VMTApiRequestHandler)
+	vMTApiRequestHandler.vmtServerAddr = wsCommunicator.VmtServerAddress
+	vMTApiRequestHandler.opsManagerUsername = loginInfo.OpsManagerUsername
+	vMTApiRequestHandler.opsManagerPassword = loginInfo.OpsManagerPassword
+	msgHandler.vmtapi = vMTApiRequestHandler
 	wsCommunicator.ServerMsgHandler = msgHandler
 
 	containerInfo := CreateContainerInfo()
