@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/vmturbo/vmturbo-go-sdk/communicator"
 	"github.com/vmturbo/vmturbo-go-sdk/sdk"
+	//	"io/ioutil"
 	"net/http"
+	//	"github.com/pamelasanchezvi/vmturbo-go-sdk/communicator"
 )
 
 // Struct which hold identifying information for connecting to the VMTServer
@@ -49,52 +51,13 @@ type Node struct {
 
 func (node *Node) createCommoditySold() []*sdk.CommodityDTO {
 	var commoditiesSold []*sdk.CommodityDTO
-	memUsed := float64(0)
-	nodeMemCapacity := float64(1000)
-	memAllocationComm := sdk.NewCommodtiyDTOBuilder(sdk.CommodityDTO_MEM_ALLOCATION).Key("Container").Capacity(float64(nodeMemCapacity)).Used(memUsed).Create()
-	commoditiesSold = append(commoditiesSold, memAllocationComm)
-
-	//appComm := sdk.NewCommodtiyDTOBuilder(sdk.CommodityDTO_APPLICATION).Key(node.TypeMetaUID).Create()
-	//commoditiesSold = append(commoditiesSold, appComm)
+	appComm := sdk.NewCommodtiyDTOBuilder(sdk.CommodityDTO_APPLICATION).Key(node.TypeMetaUID).Create()
+	commoditiesSold = append(commoditiesSold, appComm)
 	return commoditiesSold
 }
 
-func (nodeProbe *NodeProbe) buildPMEntityDTO(nodeID, displayName string, commoditiesSold []*sdk.CommodityDTO) *sdk.EntityDTO {
-	cpuUsed := float64(0)
-	memUsed := float64(0)
-	nodeMemCapacity := float64(1000)
-	nodeCpuCapacity := float64(1000)
-	entityDTOBuilder := sdk.NewEntityDTOBuilder(sdk.EntityDTO_PHYSICAL_MACHINE, nodeID)
-	entityDTOBuilder.DisplayName(displayName)
-	entityDTOBuilder.SellsCommodities(commoditiesSold)
-	entityDTOBuilder = entityDTOBuilder.Sells(sdk.CommodityDTO_MEM_ALLOCATION, "Container").Capacity(float64(nodeMemCapacity)).Used(memUsed)
-	entityDTOBuilder = entityDTOBuilder.Sells(sdk.CommodityDTO_CPU_ALLOCATION, "Container").Capacity(float64(nodeCpuCapacity)).Used(cpuUsed)
-	entityDTOBuilder = entityDTOBuilder.Sells(sdk.CommodityDTO_VMEM, nodeID).Capacity(float64(nodeMemCapacity)).Used(memUsed)
-	entityDTOBuilder = entityDTOBuilder.Sells(sdk.CommodityDTO_VCPU, nodeID).Capacity(float64(nodeCpuCapacity)).Used(cpuUsed)
-	entityDTOBuilder = entityDTOBuilder.SetProperty("IP", "172.16.162.133")
-	metaData := nodeProbe.generateReconcilationMetaData()
-	entityDTOBuilder = entityDTOBuilder.ReplacedBy(metaData)
-	entityDTO := entityDTOBuilder.Create()
-	return entityDTO
-}
-
-func (nodeProbe *NodeProbe) generateReconcilationMetaData() *sdk.EntityDTO_ReplacementEntityMetaData {
-	replacementEntityMetaDataBuilder := sdk.NewReplacementEntityMetaDataBuilder()
-	replacementEntityMetaDataBuilder.Matching("IP")
-	replacementEntityMetaDataBuilder.PatchSelling(sdk.CommodityDTO_CPU_ALLOCATION)
-	replacementEntityMetaDataBuilder.PatchSelling(sdk.CommodityDTO_MEM_ALLOCATION)
-	replacementEntityMetaDataBuilder.PatchSelling(sdk.CommodityDTO_VCPU)
-	replacementEntityMetaDataBuilder.PatchSelling(sdk.CommodityDTO_VMEM)
-	replacementEntityMetaDataBuilder.PatchSelling(sdk.CommodityDTO_APPLICATION)
-	metaData := replacementEntityMetaDataBuilder.Build()
-	return metaData
-}
-
 func (nodeProbe *NodeProbe) buildVMEntityDTO(nodeID, displayName string, commoditiesSold []*sdk.CommodityDTO) *sdk.EntityDTO {
-	// create fake VM
 	entityDTOBuilder := sdk.NewEntityDTOBuilder(sdk.EntityDTO_VIRTUAL_MACHINE, nodeID)
-	// Find out the used value for each commodity
-
 	entityDTOBuilder.DisplayName(displayName)
 	entityDTOBuilder.SellsCommodities(commoditiesSold)
 	ipAddress := "10.10.173.131" // ask Dongyi, getIPForStitching from pkg/vmturbo/vmt/probe/node_probe.go
@@ -129,11 +92,23 @@ func (kProbe *KubernetesProbe) getNodeEntityDTOs() []*sdk.EntityDTO {
 	dispName := nodearr[0].ObjectMetaName
 	// call createCommoditySold to get []*sdk.CommodityDTO
 	commodityDTO := nodearr[0].createCommoditySold()
-	newEntityDTO := kProbe.getNodeProbe().buildPMEntityDTO(nodeID, dispName, commodityDTO)
+	newEntityDTO := kProbe.getNodeProbe().buildVMEntityDTO(nodeID, dispName, commodityDTO)
 	var entityDTOarray []*sdk.EntityDTO
 	entityDTOarray = append(entityDTOarray, newEntityDTO)
 	return entityDTOarray
 }
+
+/*
+func (vmtapi *VMTApiRequestHandler) parseResponse(resp *http.Response) (string, error) {
+	if resp == nil {
+		return "", fmt.Errorf("response passed as argument is nil")
+	}
+	content, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
+}*/
 
 func (vmtapi *VMTApiRequestHandler) vmtApiPost(postPath, requestStr string) (*http.Response, error) {
 	fullUrl := "http://" + vmtapi.vmtServerAddr + "/vmturbo/api" + postPath + requestStr
@@ -146,6 +121,7 @@ func (vmtapi *VMTApiRequestHandler) vmtApiPost(postPath, requestStr string) (*ht
 		fmt.Println("Log: error getting response")
 		return nil, err
 	}
+	//responseContent, _ := vmtapi.parsePostResponse(resp)
 	defer response.Body.Close()
 	return response, nil
 }
@@ -177,6 +153,7 @@ func (h *MsgHandler) AddTarget() {
 	}
 	fmt.Println("Printing AddTarget postReply:")
 	fmt.Println(postReply)
+	//	postReplyMessage, err := vMTApiRequestHandler.parseResponse(postReply)
 
 	if postReply.Status != "200 OK" {
 		fmt.Println(" postReplyMessage error")
@@ -234,8 +211,8 @@ func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMes
 
 	messageID := serverMsg.GetMessageID()
 	newNode := &Node{
-		TypeMetaUID:    "pamelatestNode_PM_3",
-		ObjectMetaName: "randomName_PM_3",
+		TypeMetaUID:    "pamelatestNode2",
+		ObjectMetaName: "randomName2",
 		// add more fields for this Node TODO
 
 	}
@@ -298,10 +275,10 @@ func main() {
 	loginInfo.OpsManagerUsername = "administrator"
 	loginInfo.OpsManagerPassword = "a"
 	loginInfo.Type = "Kubernetes"
-	loginInfo.Name = "k8s_vmt_pam_PM_3"
-	loginInfo.Username = "kubernetes_user_pm3"
+	loginInfo.Name = "k8s_vmt_pam2"
+	loginInfo.Username = "kubernetes_user"
 	loginInfo.Password = "fake_password"
-	loginInfo.TargetIdentifier = "my_k8s_PM_3"
+	loginInfo.TargetIdentifier = "my_k8s_other"
 	// ServerMessageHandler is implemented by MsgHandler
 	msgHandler := new(MsgHandler)
 	msgHandler.wscommunicator = wsCommunicator
