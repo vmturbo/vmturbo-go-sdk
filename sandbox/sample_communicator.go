@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/vmturbo/vmturbo-go-sdk/communicator"
+	"github.com/vmturbo/vmturbo-go-sdk/sdk"
 	//	"io/ioutil"
 	"net/http"
 	//	"github.com/pamelasanchezvi/vmturbo-go-sdk/communicator"
@@ -33,6 +34,68 @@ type VMTApiRequestHandler struct {
 	vmtServerAddr      string
 	opsManagerUsername string
 	opsManagerPassword string
+}
+
+type Node struct {
+	TypeMetaUID    string
+	ObjectMetaName string
+	// Spec of type NodeSpec defines the behavior of a node.
+	NodeSpecPodCIDR       string
+	NodeSpecExternalID    string
+	NodeSpecProviderID    string
+	NodeSpecUnschedulable bool
+
+	// Status describes the current status of a Node
+	//	Status NodeStatus `json:"status,omitempty"`
+}
+
+func (node *Node) createCommoditySold() []*sdk.CommodityDTO {
+	var commoditiesSold []*sdk.CommodityDTO
+	appComm := sdk.NewCommodtiyDTOBuilder(sdk.CommodityDTO_APPLICATION).Key(node.TypeMetaUID).Create()
+	commoditiesSold = append(commoditiesSold, appComm)
+	return commoditiesSold
+}
+
+func (nodeProbe *NodeProbe) buildVMEntityDTO(nodeID, displayName string, commoditiesSold []*sdk.CommodityDTO) *sdk.EntityDTO {
+	entityDTOBuilder := sdk.NewEntityDTOBuilder(sdk.EntityDTO_VIRTUAL_MACHINE, nodeID)
+	entityDTOBuilder.DisplayName(displayName)
+	entityDTOBuilder.SellsCommodities(commoditiesSold)
+	ipAddress := "10.10.173.131" // ask Dongyi, getIPForStitching from pkg/vmturbo/vmt/probe/node_probe.go
+	entityDTOBuilder = entityDTOBuilder.SetProperty("IP", ipAddress)
+	// not using nodeProbe.generateReconcilationMetaData()
+	entityDTO := entityDTOBuilder.Create()
+
+	return entityDTO
+}
+
+type NodeProbe struct {
+	// nodesGetter func
+	NodeArray []*Node // pkg.api.Node ?
+}
+
+type KubernetesProbe struct {
+	//RestClient  KubeClient *client.Client
+	//	GetNodes() returns a  []*api.Node made from  *api.NodeList .Items[] using label field  ,
+	//	Items is a []Node
+	nodeProbe *NodeProbe
+}
+
+func (kProbe *KubernetesProbe) getNodeProbe() *NodeProbe {
+	return kProbe.nodeProbe
+}
+
+func (kProbe *KubernetesProbe) getNodeEntityDTOs() []*sdk.EntityDTO {
+	// return NodeArray as []*sdk.EntityDTO
+	nodearr := kProbe.getNodeProbe().NodeArray
+	// loops through nodearr type []*Node
+	nodeID := nodearr[0].TypeMetaUID
+	dispName := nodearr[0].ObjectMetaName
+	// call createCommoditySold to get []*sdk.CommodityDTO
+	commodityDTO := nodearr[0].createCommoditySold()
+	newEntityDTO := kProbe.getNodeProbe().buildVMEntityDTO(nodeID, dispName, commodityDTO)
+	var entityDTOarray []*sdk.EntityDTO
+	entityDTOarray = append(entityDTOarray, newEntityDTO)
+	return entityDTOarray
 }
 
 /*
@@ -112,7 +175,24 @@ func (h *MsgHandler) Validate(serverMsg *communicator.MediationServerMessage) {
 	h.wscommunicator.SendClientMessage(clientMsg)
 	// discover TODO
 	//  handler.meta.NameOrAddress passed to discoverTarget
-	postReply, err := h.vmtapi.vmtApiPost("/targets/"+h.cInfo.Name, "")
+	var requestDataB bytes.Buffer
+	requestDataB.WriteString("?type=")
+	requestDataB.WriteString(h.cInfo.Type)
+	requestDataB.WriteString("&")
+	requestDataB.WriteString("nameOrAddress=")
+	requestDataB.WriteString(h.cInfo.Name)
+	requestDataB.WriteString("&")
+	requestDataB.WriteString("username=")
+	requestDataB.WriteString(h.cInfo.Username)
+	requestDataB.WriteString("&")
+	requestDataB.WriteString("targetIdentifier=")
+	requestDataB.WriteString(h.cInfo.TargetIdentifier)
+	requestDataB.WriteString("&")
+	requestDataB.WriteString("password=")
+	requestDataB.WriteString(h.cInfo.Password)
+	str := requestDataB.String()
+
+	postReply, err := h.vmtapi.vmtApiPost("/targets", str)
 	if err != nil {
 		fmt.Println(" error in validate response from server")
 		return
@@ -120,17 +200,46 @@ func (h *MsgHandler) Validate(serverMsg *communicator.MediationServerMessage) {
 
 	fmt.Println("Printing Validate postReply:")
 	fmt.Println(postReply)
+	if postReply.Status != "200 OK" {
+		fmt.Println("Validate reply came in with error")
+	}
 	return
 }
 func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMessage) {
 	// TODO
 	fmt.Println("DiscoverTopology called")
+	messageID := serverMsg.GetMessageID()
+	newNode := &Node{
+		TypeMetaUID:    "pamelatestNode",
+		ObjectMetaName: "randomName",
+		// add more fields for this Node TODO
 
+	}
+	// make new NodeArray
+	var newNodeArray []*Node
+	newNodeArray = append(newNodeArray, newNode)
+	newNodeProbe := &NodeProbe{
+		NodeArray: newNodeArray,
+	}
+	simulatedProbe := &KubernetesProbe{
+		nodeProbe: newNodeProbe,
+	}
+	// add some fake nodes to simulatdProbe or just created it in getNodeEntityDTOs
+	nodeEntityDTOs := simulatedProbe.getNodeEntityDTOs() // []*sdk.EntityDTO
+	//  use simulated kubeclient to do ParseNode and ParsePod
+	discoveryResponse := &communicator.DiscoveryResponse{
+		EntityDTO: nodeEntityDTOs,
+	}
+	clientMsg := communicator.NewClientMessageBuilder(messageID).SetDiscoveryResponse(discoveryResponse).Create()
+	h.wscommunicator.SendClientMessage(clientMsg)
+	// TODO h.DiscoverTarget()
+	fmt.Println("done with discover")
+	return
 }
 func (h *MsgHandler) HandleAction(serverMsg *communicator.MediationServerMessage) {
 	// TODO
 	fmt.Println("HandleAction called")
-
+	return
 }
 
 // Function Creates ContainerInfo struct, sets Kubernetes Container Probe Information
@@ -158,14 +267,14 @@ func main() {
 
 	wsCommunicator := new(communicator.WebSocketCommunicator)
 	wsCommunicator.VmtServerAddress = "10.10.200.98:8080"
-	wsCommunicator.LocalAddress = "ws://172.16.162.131"
+	wsCommunicator.LocalAddress = "ws://172.16.162.133"
 	wsCommunicator.ServerUsername = "vmtRemoteMediation"
 	wsCommunicator.ServerPassword = "vmtRemoteMediation"
 	loginInfo := new(ConnectionInfo)
 	loginInfo.OpsManagerUsername = "administrator"
 	loginInfo.OpsManagerPassword = "a"
 	loginInfo.Type = "Kubernetes"
-	loginInfo.Name = "k8s_vmt"
+	loginInfo.Name = "k8s_vmt_pam"
 	loginInfo.Username = "kubernetes_user"
 	loginInfo.Password = "fake_password"
 	loginInfo.TargetIdentifier = "my_k8s"
