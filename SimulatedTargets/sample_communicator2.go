@@ -49,11 +49,10 @@ type Node struct {
 	//	Status NodeStatus `json:"status,omitempty"`
 }
 
-func (node *Node) createCommoditySold() []*sdk.CommodityDTO {
-	var commoditiesSold []*sdk.CommodityDTO
-	appComm := sdk.NewCommodtiyDTOBuilder(sdk.CommodityDTO_APPLICATION).Key(node.TypeMetaUID).Create()
-	commoditiesSold = append(commoditiesSold, appComm)
-	return commoditiesSold
+func (node *Node) createCommoditycreateSupplyChain() []*sdk.TemplateDTO {
+	supplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
+	supplyChainNodeBuilder := supplyChainNodeBuilder.Entity(sdk.EntityDTO_VIRTUAL_MACHINE).Selling(sdk.CommodityDTO_CPU_ALLOCATION, "fake").Selling(sdk.CommodityDTO_MEM_ALLOCATION, "fake").Selling(sdk.CommodityDTO_VCPU, "fake").Selling(sdk.CommodityDTO_VMEM, "fake").Selling(sdk.CommodityDTO_APPLICATION, "fake")
+
 }
 
 func (nodeProbe *NodeProbe) buildVMEntityDTO(nodeID, displayName string, commoditiesSold []*sdk.CommodityDTO) *sdk.EntityDTO {
@@ -63,6 +62,8 @@ func (nodeProbe *NodeProbe) buildVMEntityDTO(nodeID, displayName string, commodi
 	ipAddress := "10.10.173.131" // ask Dongyi, getIPForStitching from pkg/vmturbo/vmt/probe/node_probe.go
 	entityDTOBuilder = entityDTOBuilder.SetProperty("IP", ipAddress)
 	// not using nodeProbe.generateReconcilationMetaData()
+	//Make this VM buy from a given PM
+	entityDTOBuilder = entityDTOBuilder.SetProvider(sdk.EntityDTO_PHYSICAL_MACHINE, "my_k8s_PM3")
 	entityDTO := entityDTOBuilder.Create()
 
 	return entityDTO
@@ -264,6 +265,50 @@ func CreateContainerInfo() *communicator.ContainerInfo {
 	return containerInfo
 }
 
+/*
+* SupplyChain definition
+ */
+func createSupplyChain() []*sdk.TemplateDTO {
+	fakestr := "fake"
+	cpuAllocationType := sdk.CommodityDTO_CPU_ALLOCATION
+	cpuAllocationTemplateComm := &sdk.TemplateCommodity{
+		Key:           &fakestr,
+		CommodityType: &cpuAllocationType,
+	}
+	memAllocationType := sdk.CommodityDTO_MEM_ALLOCATION
+	memAllocationTemplateComm := &sdk.TemplateCommodity{
+		Key:       &fakestr,
+		Commodity: &memAllocationType,
+	}
+	vmsupplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
+	vmsupplyChainNodeBuilder := vmsupplyChainNodeBuilder.Entity(sdk.EntityDTO_VIRTUAL_MACHINE).Selling(sdk.CommodityDTO_CPU_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_MEM_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_VCPU, fakestr).Selling(sdk.CommodityDTO_CPU, fakestr).Selling(sdk.CommodityDTO_VMEM, fakestr).Selling(sdk.CommodityDTO_APPLICATION, fakestr)
+
+	cpuType := sdk.CommodityDTO_CPU
+	cpuTemplateComm := &sdk.TemplateCommodity{
+		Key:           &emptyKey,
+		CommodityType: &cpuType,
+	}
+	memType := sdk.CommodityDTO_MEM
+	memTemplateComm := &sdk.TemplateCommodity{
+		Key:       &emptyKey,
+		Commodity: &memType,
+	}
+	vmsupplyChainNodeBuilder = vmsupplyChainNodeBuilder.Provider(sdk.EntityDTO_PHYSICAL_MACHINE, sdk.Provider_HOSTING).Buys(*cpuTemplateComm).Buys(*memTemplateComm).Buys(*cpuAllocationTemplateComm).Buys(*memAllocationTemplateComm)
+
+	pmSupplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
+	pmSupplyChainNodeBuilder = pmSupplyChainNodeBuilder.Entity(sdk.EntityDTO_PHYSICAL_MACHINE).Selling(sdk.CommodityDTO_CPU_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_MEM_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_VCPU, fakestr).Selling(sdk.CommodityDTO_VMEM, fakestr).Selling(sdk.CommodityDTO_APPLICATION, fakestr)
+
+	pmVMExtLinkBuilder := sdk.NewExternalEntityLinkBuilder()
+	pmVMExtLinkBuilder.Link(sdk.EntityDTO_VIRTUAL_MACHINE, sdk.EntityDTO_PHYSICAL_MACHINE, sdk.Provider_HOSTING).Commodity(vCPUType, true).Commodity(vMemType, true).Commodity(cpuAllocationType, true).Commodity(memAllocatinType, true).ProbeEntityPropertyDef(SUPPLYCHAIN_CONSTANT_IP_ADDRESS, "172.16.162.135").ExternalEntityPropertyDef(sdk.PM_IP)
+	pmVMExternalLink := pmVMExtLinkBuilder.Build()
+	supplyChainBuilder := sdk.NewSupplyChainBuilder()
+	supplyChainBuilder.Top(vmsupplyChainNodeBuilder)
+	supplyChainBuilder.Entity(pmSupplyChainNodeBuilder)
+	supplyChainBuilder.ConnectsTo(pmVMExternalLink)
+
+	return supplyChainBuilder.Create()
+}
+
 func main() {
 
 	wsCommunicator := new(communicator.WebSocketCommunicator)
@@ -275,10 +320,10 @@ func main() {
 	loginInfo.OpsManagerUsername = "administrator"
 	loginInfo.OpsManagerPassword = "a"
 	loginInfo.Type = "Kubernetes"
-	loginInfo.Name = "k8s_vmt_pam2"
-	loginInfo.Username = "kubernetes_user"
+	loginInfo.Name = "k8s_vmt_Enlin"
+	loginInfo.Username = "kubernetes_user_ENlin"
 	loginInfo.Password = "fake_password"
-	loginInfo.TargetIdentifier = "my_k8s_other"
+	loginInfo.TargetIdentifier = "my_k8s_VM_Enlin"
 	// ServerMessageHandler is implemented by MsgHandler
 	msgHandler := new(MsgHandler)
 	msgHandler.wscommunicator = wsCommunicator

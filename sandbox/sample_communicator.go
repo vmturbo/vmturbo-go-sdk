@@ -298,10 +298,10 @@ func main() {
 	loginInfo.OpsManagerUsername = "administrator"
 	loginInfo.OpsManagerPassword = "a"
 	loginInfo.Type = "Kubernetes"
-	loginInfo.Name = "k8s_vmt_pam_PM_3"
-	loginInfo.Username = "kubernetes_user_pm3"
+	loginInfo.Name = "k8s_vmt_pam_PM_4"
+	loginInfo.Username = "kubernetes_user_pm4"
 	loginInfo.Password = "fake_password"
-	loginInfo.TargetIdentifier = "my_k8s_PM_3"
+	loginInfo.TargetIdentifier = "my_k8s_PM4"
 	// ServerMessageHandler is implemented by MsgHandler
 	msgHandler := new(MsgHandler)
 	msgHandler.wscommunicator = wsCommunicator
