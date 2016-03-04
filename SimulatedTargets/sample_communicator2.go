@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/vmturbo/vmturbo-go-sdk/communicator"
 	"github.com/vmturbo/vmturbo-go-sdk/sdk"
-	//	"io/ioutil"
 	"net/http"
 	//	"github.com/pamelasanchezvi/vmturbo-go-sdk/communicator"
 )
@@ -49,10 +48,13 @@ type Node struct {
 	//	Status NodeStatus `json:"status,omitempty"`
 }
 
-func (node *Node) createCommoditycreateSupplyChain() []*sdk.TemplateDTO {
-	supplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
-	supplyChainNodeBuilder := supplyChainNodeBuilder.Entity(sdk.EntityDTO_VIRTUAL_MACHINE).Selling(sdk.CommodityDTO_CPU_ALLOCATION, "fake").Selling(sdk.CommodityDTO_MEM_ALLOCATION, "fake").Selling(sdk.CommodityDTO_VCPU, "fake").Selling(sdk.CommodityDTO_VMEM, "fake").Selling(sdk.CommodityDTO_APPLICATION, "fake")
-
+func (node *Node) createCommoditySold() []*sdk.CommodityDTO {
+	var commoditiesSold []*sdk.CommodityDTO
+	memUsed := float64(0)
+	nodeMemCapacity := float64(1000)
+	memAllocationComm := sdk.NewCommodtiyDTOBuilder(sdk.CommodityDTO_MEM_ALLOCATION).Key("Container").Capacity(float64(nodeMemCapacity)).Used(memUsed).Create()
+	commoditiesSold = append(commoditiesSold, memAllocationComm)
+	return commoditiesSold
 }
 
 func (nodeProbe *NodeProbe) buildVMEntityDTO(nodeID, displayName string, commoditiesSold []*sdk.CommodityDTO) *sdk.EntityDTO {
@@ -64,6 +66,7 @@ func (nodeProbe *NodeProbe) buildVMEntityDTO(nodeID, displayName string, commodi
 	// not using nodeProbe.generateReconcilationMetaData()
 	//Make this VM buy from a given PM
 	entityDTOBuilder = entityDTOBuilder.SetProvider(sdk.EntityDTO_PHYSICAL_MACHINE, "my_k8s_PM3")
+	// TODO buying from .....
 	entityDTO := entityDTOBuilder.Create()
 
 	return entityDTO
@@ -94,6 +97,7 @@ func (kProbe *KubernetesProbe) getNodeEntityDTOs() []*sdk.EntityDTO {
 	// call createCommoditySold to get []*sdk.CommodityDTO
 	commodityDTO := nodearr[0].createCommoditySold()
 	newEntityDTO := kProbe.getNodeProbe().buildVMEntityDTO(nodeID, dispName, commodityDTO)
+	// create PM entity DTO TODO
 	var entityDTOarray []*sdk.EntityDTO
 	entityDTOarray = append(entityDTOarray, newEntityDTO)
 	return entityDTOarray
@@ -246,17 +250,20 @@ func (h *MsgHandler) HandleAction(serverMsg *communicator.MediationServerMessage
 
 // Function Creates ContainerInfo struct, sets Kubernetes Container Probe Information
 // Returns pointer to newly created ContainerInfo
-func CreateContainerInfo() *communicator.ContainerInfo {
-	strtype := "Kubernetes"
-	strcat := "Container"
+func (h *MsgHandler) CreateContainerInfo(localaddr string) *communicator.ContainerInfo {
+	var acctDefProps []*communicator.AccountDefEntry
+	targetIDAcctDefEntry := communicator.NewAccountDefEntryBuilder(h.cInfo.TargetIdentifier,
+		h.cInfo.Name, localaddr, ".*", communicator.AccountDefEntry_OPTIONAL, false).Create()
+	acctDefProps = append(acctDefProps, targetIDAcctDefEntry)
+	usernameAcctDefEntry := communicator.NewAccountDefEntryBuilder("username", "Username", h.cInfo.Username, ".*", communicator.AccountDefEntry_OPTIONAL, false).Create()
+	acctDefProps = append(acctDefProps, usernameAcctDefEntry)
+	passwdAcctDefEntry := communicator.NewAccountDefEntryBuilder("password", "Password", h.cInfo.Password, ".*", communicator.AccountDefEntry_OPTIONAL, true).Create()
+	acctDefProps = append(acctDefProps, passwdAcctDefEntry)
 	//create the ProbeInfo struct with only type and category fields
-	probeInfo := &communicator.ProbeInfo{
-		ProbeType:     &strtype,
-		ProbeCategory: &strcat,
-		// SupplyChainDefinitionSet
-		// AccountDefinition
-		// XXX_unrecognized
-	}
+	probeType := h.cInfo.Type
+	probeCat := "Container"
+	templateDTOs := createSupplyChain()
+	probeInfo := communicator.NewProbeInfoBuilder(probeType, probeCat, templateDTOs, acctDefProps).Create()
 	// Create container
 	containerInfo := new(communicator.ContainerInfo)
 	// Add probe to array of ProbeInfo* in container
@@ -270,6 +277,7 @@ func CreateContainerInfo() *communicator.ContainerInfo {
  */
 func createSupplyChain() []*sdk.TemplateDTO {
 	fakestr := "fake"
+	emptystr := ""
 	cpuAllocationType := sdk.CommodityDTO_CPU_ALLOCATION
 	cpuAllocationTemplateComm := &sdk.TemplateCommodity{
 		Key:           &fakestr,
@@ -277,30 +285,46 @@ func createSupplyChain() []*sdk.TemplateDTO {
 	}
 	memAllocationType := sdk.CommodityDTO_MEM_ALLOCATION
 	memAllocationTemplateComm := &sdk.TemplateCommodity{
-		Key:       &fakestr,
-		Commodity: &memAllocationType,
+		Key:           &fakestr,
+		CommodityType: &memAllocationType,
 	}
 	vmsupplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
-	vmsupplyChainNodeBuilder := vmsupplyChainNodeBuilder.Entity(sdk.EntityDTO_VIRTUAL_MACHINE).Selling(sdk.CommodityDTO_CPU_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_MEM_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_VCPU, fakestr).Selling(sdk.CommodityDTO_CPU, fakestr).Selling(sdk.CommodityDTO_VMEM, fakestr).Selling(sdk.CommodityDTO_APPLICATION, fakestr)
+	vmsupplyChainNodeBuilder = vmsupplyChainNodeBuilder.Entity(sdk.EntityDTO_VIRTUAL_MACHINE).Selling(sdk.CommodityDTO_CPU_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_MEM_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_VCPU, fakestr).Selling(sdk.CommodityDTO_CPU, fakestr).Selling(sdk.CommodityDTO_VMEM, fakestr).Selling(sdk.CommodityDTO_APPLICATION, fakestr)
 
 	cpuType := sdk.CommodityDTO_CPU
 	cpuTemplateComm := &sdk.TemplateCommodity{
-		Key:           &emptyKey,
+		Key:           &emptystr,
 		CommodityType: &cpuType,
 	}
 	memType := sdk.CommodityDTO_MEM
 	memTemplateComm := &sdk.TemplateCommodity{
-		Key:       &emptyKey,
-		Commodity: &memType,
+		Key:           &emptystr,
+		CommodityType: &memType,
 	}
-	vmsupplyChainNodeBuilder = vmsupplyChainNodeBuilder.Provider(sdk.EntityDTO_PHYSICAL_MACHINE, sdk.Provider_HOSTING).Buys(*cpuTemplateComm).Buys(*memTemplateComm).Buys(*cpuAllocationTemplateComm).Buys(*memAllocationTemplateComm)
+	vCpuType := sdk.CommodityDTO_VCPU
+	vmVCpu := &sdk.TemplateCommodity{
+		Key:           &fakestr,
+		CommodityType: &vCpuType,
+	}
+	vMemType := sdk.CommodityDTO_VMEM
+	vmVMem := &sdk.TemplateCommodity{
+		Key:           &fakestr,
+		CommodityType: &vMemType,
+	}
+	vmsupplyChainNodeBuilder = vmsupplyChainNodeBuilder.Provider(sdk.EntityDTO_PHYSICAL_MACHINE, sdk.Provider_HOSTING).Buys(*vmVCpu).Buys(*vmVMem).Buys(*cpuTemplateComm).Buys(*memTemplateComm).Buys(*cpuAllocationTemplateComm).Buys(*memAllocationTemplateComm)
 
 	pmSupplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
 	pmSupplyChainNodeBuilder = pmSupplyChainNodeBuilder.Entity(sdk.EntityDTO_PHYSICAL_MACHINE).Selling(sdk.CommodityDTO_CPU_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_MEM_ALLOCATION, fakestr).Selling(sdk.CommodityDTO_VCPU, fakestr).Selling(sdk.CommodityDTO_VMEM, fakestr).Selling(sdk.CommodityDTO_APPLICATION, fakestr)
-
+	pm := sdk.EntityDTO_PHYSICAL_MACHINE
+	attr := ""
+	externalEntityLink_SEPD := &sdk.ExternalEntityLink_ServerEntityPropDef{
+		Entity:    &pm,
+		Attribute: &attr,
+	}
 	pmVMExtLinkBuilder := sdk.NewExternalEntityLinkBuilder()
-	pmVMExtLinkBuilder.Link(sdk.EntityDTO_VIRTUAL_MACHINE, sdk.EntityDTO_PHYSICAL_MACHINE, sdk.Provider_HOSTING).Commodity(vCPUType, true).Commodity(vMemType, true).Commodity(cpuAllocationType, true).Commodity(memAllocatinType, true).ProbeEntityPropertyDef(SUPPLYCHAIN_CONSTANT_IP_ADDRESS, "172.16.162.135").ExternalEntityPropertyDef(sdk.PM_IP)
+	pmVMExtLinkBuilder = pmVMExtLinkBuilder.Link(sdk.EntityDTO_VIRTUAL_MACHINE, sdk.EntityDTO_PHYSICAL_MACHINE, sdk.Provider_HOSTING).Commodity(vCpuType, true).Commodity(vMemType, true).Commodity(cpuAllocationType, true).Commodity(memAllocationType, true).ProbeEntityPropertyDef(sdk.SUPPLYCHAIN_CONSTANT_IP_ADDRESS, "172.16.162.135").ExternalEntityPropertyDef(externalEntityLink_SEPD)
 	pmVMExternalLink := pmVMExtLinkBuilder.Build()
+	/*SupplyChain building*/
 	supplyChainBuilder := sdk.NewSupplyChainBuilder()
 	supplyChainBuilder.Top(vmsupplyChainNodeBuilder)
 	supplyChainBuilder.Entity(pmSupplyChainNodeBuilder)
@@ -335,7 +359,7 @@ func main() {
 	msgHandler.vmtapi = vMTApiRequestHandler
 	wsCommunicator.ServerMsgHandler = msgHandler
 
-	containerInfo := CreateContainerInfo()
+	containerInfo := msgHandler.CreateContainerInfo(wsCommunicator.LocalAddress)
 	fmt.Println("created container info ")
 	wsCommunicator.RegisterAndListen(containerInfo)
 
