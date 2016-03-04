@@ -48,6 +48,16 @@ type Node struct {
 	//	Status NodeStatus `json:"status,omitempty"`
 }
 
+func (node *Node) createCommodityBought() []*sdk.CommodityDTO {
+	var commoditiesBought []*sdk.CommodityDTO
+	memUsed := float64(10)
+	nodeMemCapacity := float64(100)
+	// TODO correct spelling in github for vmturbo !
+	memAllocationComm := sdk.NewCommodtiyDTOBuilder(sdk.CommodityDTO_MEM_ALLOCATION).Key("Container").Capacity(float64(nodeMemCapacity)).Used(memUsed).Create()
+	commoditiesBought = append(commoditiesBought, memAllocationComm)
+	return commoditiesBought
+}
+
 func (node *Node) createCommoditySold() []*sdk.CommodityDTO {
 	var commoditiesSold []*sdk.CommodityDTO
 	memUsed := float64(0)
@@ -57,15 +67,36 @@ func (node *Node) createCommoditySold() []*sdk.CommodityDTO {
 	return commoditiesSold
 }
 
-func (nodeProbe *NodeProbe) buildVMEntityDTO(nodeID, displayName string, commoditiesSold []*sdk.CommodityDTO) *sdk.EntityDTO {
-	entityDTOBuilder := sdk.NewEntityDTOBuilder(sdk.EntityDTO_VIRTUAL_MACHINE, nodeID)
+func (nodeProbe *NodeProbe) buildPMEntityDTO(nodeID, displayName string, commoditiesSold []*sdk.CommodityDTO) *sdk.EntityDTO {
+	cpuUsed := float64(0)
+	memUsed := float64(0)
+	nodeMemCapacity := float64(1000)
+	nodeCpuCapacity := float64(1000)
+	entityDTOBuilder := sdk.NewEntityDTOBuilder(sdk.EntityDTO_PHYSICAL_MACHINE, nodeID)
 	entityDTOBuilder.DisplayName(displayName)
 	entityDTOBuilder.SellsCommodities(commoditiesSold)
+
+	entityDTOBuilder = entityDTOBuilder.Sells(sdk.CommodityDTO_MEM_ALLOCATION, "Container").Capacity(float64(nodeMemCapacity)).Used(memUsed)
+	entityDTOBuilder = entityDTOBuilder.Sells(sdk.CommodityDTO_CPU_ALLOCATION, "Container").Capacity(float64(nodeCpuCapacity)).Used(cpuUsed)
+	entityDTOBuilder = entityDTOBuilder.Sells(sdk.CommodityDTO_VMEM, nodeID).Capacity(float64(nodeMemCapacity)).Used(memUsed)
+	entityDTOBuilder = entityDTOBuilder.Sells(sdk.CommodityDTO_VCPU, nodeID).Capacity(float64(nodeCpuCapacity)).Used(cpuUsed)
+	entityDTOBuilder = entityDTOBuilder.SetProperty("IP", "172.16.162.133")
+	metaData := nodeProbe.generateReconcilationMetaData()
+	entityDTOBuilder = entityDTOBuilder.ReplacedBy(metaData)
+	entityDTO := entityDTOBuilder.Create()
+	return entityDTO
+}
+
+func (nodeProbe *NodeProbe) buildVMEntityDTO(nodeID, displayName string, commoditiesbought []*sdk.CommodityDTO) *sdk.EntityDTO {
+	entityDTOBuilder := sdk.NewEntityDTOBuilder(sdk.EntityDTO_VIRTUAL_MACHINE, nodeID)
+	entityDTOBuilder.DisplayName(displayName)
+	//	entityDTOBuilder.SellsCommodities(commoditiesSold)
+	entityDTOBuilder.BuysCommodities(commoditiesbought)
 	ipAddress := "10.10.173.131" // ask Dongyi, getIPForStitching from pkg/vmturbo/vmt/probe/node_probe.go
 	entityDTOBuilder = entityDTOBuilder.SetProperty("IP", ipAddress)
 	// not using nodeProbe.generateReconcilationMetaData()
-	//Make this VM buy from a given PM
-	entityDTOBuilder = entityDTOBuilder.SetProvider(sdk.EntityDTO_PHYSICAL_MACHINE, "my_k8s_PM3")
+	//Make this VM buy from a given PM , TODO check if this is the entity.Name for the PM
+	entityDTOBuilder = entityDTOBuilder.SetProvider(sdk.EntityDTO_PHYSICAL_MACHINE, "PAM_PM_seller")
 	// TODO buying from .....
 	entityDTO := entityDTOBuilder.Create()
 
@@ -88,16 +119,19 @@ func (kProbe *KubernetesProbe) getNodeProbe() *NodeProbe {
 	return kProbe.nodeProbe
 }
 
+/*this function turns our NodeArray from the Kubernetes.NodeProbe as a []*sdk.EntityDTO */
 func (kProbe *KubernetesProbe) getNodeEntityDTOs() []*sdk.EntityDTO {
-	// return NodeArray as []*sdk.EntityDTO
 	nodearr := kProbe.getNodeProbe().NodeArray
-	// loops through nodearr type []*Node
+	/* if this was a real master and had >1 node then it would loop through nodearr type []*Node
+	   for now we just harcode to the first Node*/
 	nodeID := nodearr[0].TypeMetaUID
 	dispName := nodearr[0].ObjectMetaName
 	// call createCommoditySold to get []*sdk.CommodityDTO
-	commodityDTO := nodearr[0].createCommoditySold()
-	newEntityDTO := kProbe.getNodeProbe().buildVMEntityDTO(nodeID, dispName, commodityDTO)
-	// create PM entity DTO TODO
+	commodityDTOsold := nodearr[0].createCommoditySold()
+	commodityDTObought := nodearr[0].createCommodityBought()
+	// create PM EntityDTO
+	newPMEntityDTO := kProbe.getNodeProbe().buildPMEntityDTO(nodeID, "PAM_PM_seller", commodityDTOsold)
+	newEntityDTO := kProbe.getNodeProbe().buildVMEntityDTO(nodeID, "PAM_VM_buyer", commodityDTObought)
 	var entityDTOarray []*sdk.EntityDTO
 	entityDTOarray = append(entityDTOarray, newEntityDTO)
 	return entityDTOarray
@@ -216,8 +250,8 @@ func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMes
 
 	messageID := serverMsg.GetMessageID()
 	newNode := &Node{
-		TypeMetaUID:    "pamelatestNode2",
-		ObjectMetaName: "randomName2",
+		TypeMetaUID:    "pamelatestNode",
+		ObjectMetaName: "pamelatestNode_MetaName",
 		// add more fields for this Node TODO
 
 	}
