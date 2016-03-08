@@ -29,30 +29,37 @@ type MsgHandler struct {
 	vmtapi         *VMTApiRequestHandler
 }
 
-// This struct hold the authorization information and address for connecting to VMTurbo API
+// This struct holds the authorization information and address for connecting to VMTurbo API
 type VMTApiRequestHandler struct {
 	vmtServerAddr      string
 	opsManagerUsername string
 	opsManagerPassword string
 }
 
-func CreateCommoditiesBought() []*sdk.CommodityDTO {
+// A function that creates an array of *sdk.CommodityDTO , this array defines all the commodities bought by a single
+// entity in the target supply chain.
+func CreateCommoditiesBought(comms_array []*Commodity_Params) []*sdk.CommodityDTO {
 	var commoditiesBought []*sdk.CommodityDTO
-	cpuUsed := float64(10)
-	cpuCapacity := float64(100)
-	// TODO correct spelling in github for vmturbo !
-	cpuComm := sdk.NewCommodtiyDTOBuilder(sdk.CommodityDTO_CPU).Key("cpu_comm").Capacity(float64(cpuCapacity)).Used(cpuUsed).Create()
-	commoditiesBought = append(commoditiesBought, cpuComm)
+	for _, comm := range comms_array {
+		cpuUsed := float64(comm.used)
+		cpuCapacity := float64(comm.cap)
+		// TODO correct spelling in github for vmturbo !
+		cpuComm := sdk.NewCommodtiyDTOBuilder(comm.commType).Key(comm.commKey).Capacity(float64(cpuCapacity)).Used(cpuUsed).Create()
+		commoditiesBought = append(commoditiesBought, cpuComm)
+	}
 	return commoditiesBought
 }
 
-func CreateCommoditiesSold() []*sdk.CommodityDTO {
+// A function that creates an array of *sdk.CommodityDTO , this array defines all the commodities sold by a single
+// entity
+func CreateCommoditiesSold(comms_array []*Commodity_Params) []*sdk.CommodityDTO {
 	var commoditiesSold []*sdk.CommodityDTO
-	cpuUsed := float64(0)
-	cpuCapacity := float64(1000)
-	// TODO should use an array of commodities sold by this node, find out
-	cpuComm := sdk.NewCommodtiyDTOBuilder(sdk.CommodityDTO_CPU).Key("cpu_comm").Capacity(float64(cpuCapacity)).Used(cpuUsed).Create()
-	commoditiesSold = append(commoditiesSold, cpuComm)
+	for _, comm := range comms_array {
+		cpuUsed := float64(comm.used)
+		cpuCapacity := float64(comm.cap)
+		cpuComm := sdk.NewCommodtiyDTOBuilder(comm.commType).Key(comm.commKey).Capacity(float64(cpuCapacity)).Used(cpuUsed).Create()
+		commoditiesSold = append(commoditiesSold, cpuComm)
+	}
 	return commoditiesSold
 }
 
@@ -89,11 +96,54 @@ func (nodeProbe *NodeProbe) buildVMEntityDTO(VM_id, displayName, provider string
 
 type NodeProbe struct {
 	// nodesGetter func
-	NodeArray []*Node
+	soldcommodities   []*Commodity_Params
+	boughtcommodities []*Commodity_Params
 }
 
 type KubernetesProbe struct {
 	nodeProbe *NodeProbe
+}
+
+type Commodity_Params struct {
+	commType sdk.CommodityDTO_CommodityType
+	commKey  string
+	used     int
+	cap      int
+}
+
+func (nodeProbe *NodeProbe) PopulateProbe() {
+	var s_comms_array []*Commodity_Params
+	var b_comms_array []*Commodity_Params
+	comm1 := &Commodity_Params{
+		commType: sdk.CommodityDTO_CPU,
+		commKey:  "cpu_comm",
+		used:     4,
+		cap:      100,
+	}
+	comm2 := &Commodity_Params{
+		commType: sdk.CommodityDTO_MEM,
+		commKey:  "mem_comm",
+		used:     10,
+		cap:      100,
+	}
+	comm3 := &Commodity_Params{
+		commType: sdk.CommodityDTO_CPU,
+		commKey:  "cpu_comm",
+		used:     0,
+		cap:      1000,
+	}
+	comm4 := &Commodity_Params{
+		commType: sdk.CommodityDTO_MEM,
+		commKey:  "mem_comm",
+		used:     0,
+		cap:      1000,
+	}
+	s_comms_array = append(s_comms_array, comm1)
+	s_comms_array = append(s_comms_array, comm2)
+	b_comms_array = append(b_comms_array, comm3)
+	b_comms_array = append(b_comms_array, comm4)
+	nodeProbe.soldcommodities = s_comms_array
+	nodeProbe.boughtcommodities = b_comms_array
 }
 
 func (kProbe *KubernetesProbe) getNodeProbe() *NodeProbe {
@@ -102,13 +152,15 @@ func (kProbe *KubernetesProbe) getNodeProbe() *NodeProbe {
 
 /*this function turns our NodeArray from the Kubernetes.NodeProbe as a []*sdk.EntityDTO */
 func (kProbe *KubernetesProbe) getNodeEntityDTOs() []*sdk.EntityDTO {
-	nodearr := kProbe.getNodeProbe().NodeArray
+	kProbe.getNodeProbe().PopulateProbe()
 	/* if this was a real master and had >1 node then it would loop through nodearr type []*Node
 	   for now we just harcode to the first Node*/
 	// we call createCommoditySold to get []*sdk.CommodityDTO
 	// for now commoditiesDTOSold and bought are array of size 1, TODO: modifify createCommodities.. and buildPM for array
-	commoditiesDTOsold := CreateCommoditiesSold()
-	commoditiesDTObought := CreateCommoditiesBought()
+	s_comms_array := kProbe.getNodeProbe().soldcommodities
+	b_comms_array := kProbe.getNodeProbe().boughtcommodities
+	commoditiesDTOsold := CreateCommoditiesSold(s_comms_array)
+	commoditiesDTObought := CreateCommoditiesBought(b_comms_array)
 	// create PM EntityDTO
 	newPMEntityDTO1 := kProbe.getNodeProbe().buildPMEntityDTO("PM_seller1", "PAM_PM_seller1", commoditiesDTOsold)
 	newVMEntityDTO1A := kProbe.getNodeProbe().buildVMEntityDTO("VM_buyer1A", "PAM_VM_buyer1A", "PM_seller1", commoditiesDTObought)
@@ -222,16 +274,7 @@ func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMes
 	fmt.Println("DiscoverTopology called")
 
 	messageID := serverMsg.GetMessageID()
-	newNode := &Node{
-	//TypeMetaUID:    "pamelatestNode",
-	//ObjectMetaName: "pamelatestNode_MetaName",
-	}
-	// make new NodeArray
-	var newNodeArray []*Node
-	newNodeArray = append(newNodeArray, newNode)
-	newNodeProbe := &NodeProbe{
-		NodeArray: newNodeArray,
-	}
+	newNodeProbe := new(NodeProbe)
 	simulatedProbe := &KubernetesProbe{
 		nodeProbe: newNodeProbe,
 	}
@@ -304,7 +347,7 @@ func createSupplyChain() []*sdk.TemplateDTO {
 func main() {
 
 	wsCommunicator := new(communicator.WebSocketCommunicator)
-	wsCommunicator.VmtServerAddress = "10.10.200.98:8080"
+	wsCommunicator.VmtServerAddress = "160.39.163.35:8080"
 	wsCommunicator.LocalAddress = "ws://172.16.162.133"
 	wsCommunicator.ServerUsername = "vmtRemoteMediation"
 	wsCommunicator.ServerPassword = "vmtRemoteMediation"
