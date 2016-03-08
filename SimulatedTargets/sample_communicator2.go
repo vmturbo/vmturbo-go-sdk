@@ -98,6 +98,7 @@ type NodeProbe struct {
 	// nodesGetter func
 	soldcommodities   []*Commodity_Params
 	boughtcommodities []*Commodity_Params
+	entities          []*Entity_Params
 }
 
 type KubernetesProbe struct {
@@ -111,9 +112,21 @@ type Commodity_Params struct {
 	cap      int
 }
 
+type Entity_Params struct {
+	Buyer             bool
+	Seller            bool
+	entityType        sdk.EntityDTO_EntityType
+	entityID          string
+	entityDisplayName string
+	commoditiesSold   []*Commodity_Params
+	commoditiesBought []*Commodity_Params
+	providerID        string
+}
+
 func (nodeProbe *NodeProbe) PopulateProbe() {
 	var s_comms_array []*Commodity_Params
 	var b_comms_array []*Commodity_Params
+	var entities []*Entity_Params
 	comm1 := &Commodity_Params{
 		commType: sdk.CommodityDTO_CPU,
 		commKey:  "cpu_comm",
@@ -144,6 +157,45 @@ func (nodeProbe *NodeProbe) PopulateProbe() {
 	b_comms_array = append(b_comms_array, comm4)
 	nodeProbe.soldcommodities = s_comms_array
 	nodeProbe.boughtcommodities = b_comms_array
+
+	newSeller1 := &Entity_Params{
+		Buyer:             false,
+		Seller:            true,
+		entityType:        sdk.EntityDTO_PHYSICAL_MACHINE,
+		entityID:          "PM_seller_1",
+		entityDisplayName: "test_PM_seller_1",
+		commoditiesSold:   s_comms_array,
+	}
+	newSeller2 := &Entity_Params{
+		Buyer:             false,
+		Seller:            true,
+		entityType:        sdk.EntityDTO_PHYSICAL_MACHINE,
+		entityID:          "PM_seller_2",
+		entityDisplayName: "test_PM_seller_2",
+		commoditiesSold:   s_comms_array,
+	}
+	newBuyer1 := &Entity_Params{
+		Buyer:             true,
+		Seller:            false,
+		entityType:        sdk.EntityDTO_VIRTUAL_MACHINE,
+		entityID:          "VM_buyer_1A",
+		entityDisplayName: "test_VM_buyer_1A",
+		commoditiesBought: b_comms_array,
+		providerID:        "PM_seller_1",
+	}
+	newBuyer2 := *newBuyer1
+	newBuyer2.entityID = "VM_buyer_1B"
+	newBuyer2.entityDisplayName = "test_VM_buyer_1B"
+	newBuyer3 := *newBuyer1
+	newBuyer3.entityID = "VM_buyer_2A"
+	newBuyer3.entityDisplayName = "test_VM_buyer_2A"
+	newBuyer3.providerID = "PM_seller_2"
+	entities = append(entities, newSeller1)
+	entities = append(entities, newSeller2)
+	entities = append(entities, newBuyer1)
+	entities = append(entities, &newBuyer2)
+	entities = append(entities, &newBuyer3)
+	nodeProbe.entities = entities
 }
 
 func (kProbe *KubernetesProbe) getNodeProbe() *NodeProbe {
@@ -153,32 +205,23 @@ func (kProbe *KubernetesProbe) getNodeProbe() *NodeProbe {
 /*this function turns our NodeArray from the Kubernetes.NodeProbe as a []*sdk.EntityDTO */
 func (kProbe *KubernetesProbe) getNodeEntityDTOs() []*sdk.EntityDTO {
 	kProbe.getNodeProbe().PopulateProbe()
-	/* if this was a real master and had >1 node then it would loop through nodearr type []*Node
-	   for now we just harcode to the first Node*/
-	// we call createCommoditySold to get []*sdk.CommodityDTO
-	// for now commoditiesDTOSold and bought are array of size 1, TODO: modifify createCommodities.. and buildPM for array
-	s_comms_array := kProbe.getNodeProbe().soldcommodities
-	b_comms_array := kProbe.getNodeProbe().boughtcommodities
-	commoditiesDTOsold := CreateCommoditiesSold(s_comms_array)
-	commoditiesDTObought := CreateCommoditiesBought(b_comms_array)
-	// create PM EntityDTO
-	newPMEntityDTO1 := kProbe.getNodeProbe().buildPMEntityDTO("PM_seller1", "PAM_PM_seller1", commoditiesDTOsold)
-	newVMEntityDTO1A := kProbe.getNodeProbe().buildVMEntityDTO("VM_buyer1A", "PAM_VM_buyer1A", "PM_seller1", commoditiesDTObought)
-	newVMEntityDTO1B := kProbe.getNodeProbe().buildVMEntityDTO("VM_buyer1B", "PAM_VM_buyer1B", "PM_seller1", commoditiesDTObought)
-
-	newPMEntityDTO2 := kProbe.getNodeProbe().buildPMEntityDTO("PM_seller2", "PAM_PM_seller2", commoditiesDTOsold)
-	newVMEntityDTO2A := kProbe.getNodeProbe().buildVMEntityDTO("VM_buyer2A", "PAM_VM_buyer2A", "PM_seller2", commoditiesDTObought)
-	newVMEntityDTO2B := kProbe.getNodeProbe().buildVMEntityDTO("VM_buyer2B", "PAM_VM_buyer2B", "PM_seller2", commoditiesDTObought)
-	newPMEntityDTO3 := kProbe.getNodeProbe().buildPMEntityDTO("PM_seller3", "PAM_PM_seller3", commoditiesDTOsold)
-
+	// create PM or VM EntityDTO
 	var entityDTOarray []*sdk.EntityDTO
-	entityDTOarray = append(entityDTOarray, newPMEntityDTO1)
-	entityDTOarray = append(entityDTOarray, newPMEntityDTO2)
-	entityDTOarray = append(entityDTOarray, newVMEntityDTO1A)
-	entityDTOarray = append(entityDTOarray, newVMEntityDTO1B)
-	entityDTOarray = append(entityDTOarray, newVMEntityDTO2A)
-	entityDTOarray = append(entityDTOarray, newVMEntityDTO2B)
-	entityDTOarray = append(entityDTOarray, newPMEntityDTO3)
+	for _, entity := range kProbe.getNodeProbe().entities {
+		// here the only sellers are Physical Machines
+		if entity.Seller == true {
+			// we call createCommoditySold to get []*sdk.CommodityDTO
+			commoditiesDTOSold := CreateCommoditiesSold(entity.commoditiesSold)
+			newEntityDTO := kProbe.getNodeProbe().buildPMEntityDTO(entity.entityID, entity.entityDisplayName, commoditiesDTOSold)
+			entityDTOarray = append(entityDTOarray, newEntityDTO)
+		}
+		if entity.Buyer == true {
+			commoditiesDTOBought := CreateCommoditiesBought(entity.commoditiesBought)
+			newEntityDTO := kProbe.getNodeProbe().buildVMEntityDTO(entity.entityID, entity.entityDisplayName, entity.providerID, commoditiesDTOBought)
+			entityDTOarray = append(entityDTOarray, newEntityDTO)
+		}
+	}
+
 	return entityDTOarray
 }
 
@@ -347,7 +390,7 @@ func createSupplyChain() []*sdk.TemplateDTO {
 func main() {
 
 	wsCommunicator := new(communicator.WebSocketCommunicator)
-	wsCommunicator.VmtServerAddress = "160.39.163.35:8080"
+	wsCommunicator.VmtServerAddress = "160.39.162.134:8080"
 	wsCommunicator.LocalAddress = "ws://172.16.162.133"
 	wsCommunicator.ServerUsername = "vmtRemoteMediation"
 	wsCommunicator.ServerPassword = "vmtRemoteMediation"
