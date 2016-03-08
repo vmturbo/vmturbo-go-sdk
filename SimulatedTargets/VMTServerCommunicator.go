@@ -365,21 +365,30 @@ func (h *MsgHandler) CreateContainerInfo(localaddr string) *communicator.Contain
 }
 
 /*
-* SupplyChain definition
+* SupplyChain definition: this function defines the buyer/seller relationships between each of the entity types in * the Target, the default Supply Chain definition in this function is Virtual Machine buyer, a Physical Machine
+* seller and the commodities are CPU and Memory.
+* Each entity type and the relationships are defined by a single TemplateDTO struct
+* The function returns an array of TemplateDTO pointers
  */
 func createSupplyChain() []*sdk.TemplateDTO {
 	optionalKey := "commodity_key"
 	vmsupplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
+	// Creates a Virtual Machine entity
 	vmsupplyChainNodeBuilder = vmsupplyChainNodeBuilder.Entity(sdk.EntityDTO_VIRTUAL_MACHINE)
 	cpuType := sdk.CommodityDTO_CPU
 	cpuTemplateComm := &sdk.TemplateCommodity{
 		Key:           &optionalKey,
 		CommodityType: &cpuType,
 	}
+	// The Entity type for the Virtual Machine's commodity provider is defined by the Provider() method.
+	// The Commodity type for Virtual Machine's buying relationship is define by the Buys() method
 	vmsupplyChainNodeBuilder = vmsupplyChainNodeBuilder.Provider(sdk.EntityDTO_PHYSICAL_MACHINE, sdk.Provider_HOSTING).Buys(*cpuTemplateComm)
 	pmSupplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
+	// Creates a Physical Machine entity and sets the type of commodity it sells to CPU
 	pmSupplyChainNodeBuilder = pmSupplyChainNodeBuilder.Entity(sdk.EntityDTO_PHYSICAL_MACHINE).Selling(sdk.CommodityDTO_CPU, optionalKey)
-	/*SupplyChain building*/
+	// SupplyChain building
+	//  The last buyer in the supply chain is set as the top entity with the Top() method
+	// All other entities are added to the SupplyChainBuilder with the Entity() method
 	supplyChainBuilder := sdk.NewSupplyChainBuilder()
 	supplyChainBuilder.Top(vmsupplyChainNodeBuilder)
 	supplyChainBuilder.Entity(pmSupplyChainNodeBuilder)
@@ -388,20 +397,31 @@ func createSupplyChain() []*sdk.TemplateDTO {
 }
 
 func main() {
+	/*
+	* User defined settings
+	 */
+	local_IP := "172.16.162.133"
+	VMTServer_IP := "160.39.162.134"
+	TargetIdentifier := "userDefinedTarget"
 
+	/*
+	* Do Not Modify below this point
+	 */
+	localAddress := "ws://" + local_IP
+	VMTServerAddress := VMTServer_IP + ":8080"
 	wsCommunicator := new(communicator.WebSocketCommunicator)
-	wsCommunicator.VmtServerAddress = "160.39.162.134:8080"
-	wsCommunicator.LocalAddress = "ws://172.16.162.133"
+	wsCommunicator.VmtServerAddress = VMTServerAddress
+	wsCommunicator.LocalAddress = localAddress
 	wsCommunicator.ServerUsername = "vmtRemoteMediation"
 	wsCommunicator.ServerPassword = "vmtRemoteMediation"
 	loginInfo := new(ConnectionInfo)
 	loginInfo.OpsManagerUsername = "administrator"
 	loginInfo.OpsManagerPassword = "a"
 	loginInfo.Type = "Kubernetes"
-	loginInfo.Name = "k8s_vmt_Enlin"
-	loginInfo.Username = "kubernetes_user_ENlin"
-	loginInfo.Password = "fake_password"
-	loginInfo.TargetIdentifier = "my_k8s_VM_Enlin"
+	loginInfo.Name = "k8s_vmt"
+	loginInfo.Username = "username"
+	loginInfo.Password = "password"
+	loginInfo.TargetIdentifier = TargetIdentifier
 	// ServerMessageHandler is implemented by MsgHandler
 	msgHandler := new(MsgHandler)
 	msgHandler.wscommunicator = wsCommunicator
@@ -414,7 +434,6 @@ func main() {
 	wsCommunicator.ServerMsgHandler = msgHandler
 
 	containerInfo := msgHandler.CreateContainerInfo(wsCommunicator.LocalAddress)
-	fmt.Println("created container info ")
 	wsCommunicator.RegisterAndListen(containerInfo)
 
 }
