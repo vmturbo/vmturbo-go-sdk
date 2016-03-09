@@ -272,7 +272,6 @@ func (h *MsgHandler) AddTarget() {
 }
 
 func (h *MsgHandler) Validate(serverMsg *communicator.MediationServerMessage) {
-	fmt.Println("validate called")
 	// messageID is a int32 , if nil then 0
 	messageID := serverMsg.GetMessageID()
 	validationResponse := new(communicator.ValidationResponse)
@@ -302,19 +301,21 @@ func (h *MsgHandler) Validate(serverMsg *communicator.MediationServerMessage) {
 
 	postReply, err := h.vmtapi.vmtApiPost("/targets", str)
 	if err != nil {
-		fmt.Println(" error in validate response from server")
+		glog.Infof(" error in validate response from server")
 		return
 	}
 
 	fmt.Println("Printing Validate postReply:")
 	fmt.Println(postReply)
 	if postReply.Status != "200 OK" {
-		fmt.Println("Validate reply came in with error")
+		glog.Infof("Validate reply came in with error")
 	}
 	return
 }
+
+//
+//
 func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMessage) {
-	fmt.Println("DiscoverTopology called")
 
 	messageID := serverMsg.GetMessageID()
 	newNodeProbe := new(NodeProbe)
@@ -331,11 +332,10 @@ func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMes
 	h.wscommunicator.SendClientMessage(clientMsg)
 	glog.Infof("The client msg sent out is %++v", clientMsg)
 	fmt.Println(clientMsg)
-	fmt.Println("done with discover")
 	return
 }
+
 func (h *MsgHandler) HandleAction(serverMsg *communicator.MediationServerMessage) {
-	fmt.Println("HandleAction called")
 	return
 }
 
@@ -364,12 +364,20 @@ func (h *MsgHandler) CreateContainerInfo(localaddr string) *communicator.Contain
 	return containerInfo
 }
 
-/*
-* SupplyChain definition: this function defines the buyer/seller relationships between each of the entity types in * the Target, the default Supply Chain definition in this function is Virtual Machine buyer, a Physical Machine
-* seller and the commodities are CPU and Memory.
-* Each entity type and the relationships are defined by a single TemplateDTO struct
-* The function returns an array of TemplateDTO pointers
- */
+// SupplyChain definition: this function defines the buyer/seller relationships between each of
+// the entity types in * the Target, the default Supply Chain definition in this function is:
+// a Virtual Machine buyer, a Physical Machine seller and the commodities are CPU and Memory.
+// Each entity type and the relationships are defined by a single TemplateDTO struct
+// The function returns an array of TemplateDTO pointers
+// TO MODIFY:
+// For each entity: Create a supply chain builder object with sdk.NewSupplyChainNodeBuilder()
+//		    Set a provider type if the new entity is a buyer , create commodity objects
+//		    and add them to the entity's supply chain builder object
+//                  Add commodity objects with the selling function to the entity you create if
+//		    it is a seller.
+//		    Add the new entity to the supplyChainBuilder instance with either the Top()
+//		    or  Entity() methods
+// The SupplyChainBuilder() function is only called once, in this function.
 func createSupplyChain() []*sdk.TemplateDTO {
 	optionalKey := "commodity_key"
 	vmsupplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
@@ -397,16 +405,16 @@ func createSupplyChain() []*sdk.TemplateDTO {
 }
 
 func main() {
-	/*
-	* User defined settings
-	 */
+	//
+	//User defined settings
+	//
 	local_IP := "172.16.162.133"
 	VMTServer_IP := "160.39.162.134"
 	TargetIdentifier := "userDefinedTarget"
 
-	/*
-	* Do Not Modify below this point
-	 */
+	//
+	//Do Not Modify below this line
+	//
 	localAddress := "ws://" + local_IP
 	VMTServerAddress := VMTServer_IP + ":8080"
 	wsCommunicator := new(communicator.WebSocketCommunicator)

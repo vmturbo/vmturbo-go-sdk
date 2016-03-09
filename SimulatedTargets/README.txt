@@ -1,19 +1,30 @@
 
 
-This go program sets up a websocket connection to a user's VMTServer.
+This go program sets up a websocket connection as a simulated VMT target to a VMTServer.
+Once the connection is established, a simulated Target Supply Chain definition is 
+created and sent to the server.
+The default simulated Supply Chain definition contains a seller entity of type Physical Machine
+and a buyer entity of type Virtual Machine. 
+The default topology which will be discovered by the VMTServer is 2 Physical Machine sellers;
+the first PM sells two different virtual machines and the second PM sells to one virtual machine.
+
+
 
 Before running this program:
 
 -Get your local IP address and update the local_IP variable in the main() function
 -Get the IP address of the VMTServer host you want to connect to
 and update the VMTServer_IP variable in the main() function.
--Create an arbitrary identifier for this simulated target.
+-Create an arbitrary identifier for this simulated target and update the TargetIdentifier variable
 
-Once the connection is established, a simulated Target Supply Chain Topology definition is 
-created by the function createSupplyChain() and sent to the server.
-The default simulated topology definition contains a seller entity of type Physical Machine
-and a buyer entity of type Virtual Machine.
-The createSupplyChain() function can be modified by the user to add buyer/seller entities 
-and commodities.
+To Modify the Default Supply Chain:
+-The function createSupplyChain() includes comments explaining how to add entity types  with their 
+ respective relationship to other entity types.
+ Other available EntityDTO_EntityType which can be added to the supply chain can be found in
+ vmturbo-go-sdk/sdk/CommonDTO.pb.go
+-The steps are: create a supplyChainNodeBuilder instance with sdk.NewSupplyChainNodeBuilder() , 
+ set the supplyChainNodeBuilder object's EntityDTO_EntityType and other properties, add the 
+ supplyChainNodeBuilder instance to the supplyChain Builder.
+
 
 
