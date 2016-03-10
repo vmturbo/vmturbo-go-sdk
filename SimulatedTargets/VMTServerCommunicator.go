@@ -43,7 +43,6 @@ func CreateCommoditiesBought(comms_array []*Commodity_Params) []*sdk.CommodityDT
 	for _, comm := range comms_array {
 		cpuUsed := float64(comm.used)
 		cpuCapacity := float64(comm.cap)
-		// TODO correct spelling in github for vmturbo !
 		cpuComm := sdk.NewCommodtiyDTOBuilder(comm.commType).Key(comm.commKey).Capacity(float64(cpuCapacity)).Used(cpuUsed).Create()
 		commoditiesBought = append(commoditiesBought, cpuComm)
 	}
@@ -75,17 +74,17 @@ func (nodeProbe *NodeProbe) generateReconcilationMetaData() *sdk.EntityDTO_Repla
 // This function builds an EntityDTO object from information provided from the one of the entities at discovery time.
 // It returns an *sdk.EntityDTO which points to the EntityDTO created.
 func (e *Entity_Params) buildEntityDTO() *sdk.EntityDTO {
-	entityDTOBuilder := sdk.NewEntityDTOBuilder(entity.entityType, entity.entityID)
-	entityDTOBuilder.DisplayName(entity.entityDisplayName)
-	if e.buyer == true {
-		commoditiesbought := CreateCommoditiesBought(entity.commoditiesBought)
-		entityDTOBuilder = entityDTOBuilder.SetProvider(entity.providerType, entity.providerID)
-		entityDTOBuilder.BuysCommodities(commoditiesbought)
+	entityDTOBuilder := sdk.NewEntityDTOBuilder(e.entityType, e.entityID)
+	entityDTOBuilder.DisplayName(e.entityDisplayName)
+	if e.Buyer == true {
+		commoditiesbought := CreateCommoditiesBought(e.commoditiesBought)
+		entityDTOBuilder = entityDTOBuilder.
+			entityDTOBuilder.BuysCommodities(commoditiesbought)
 	}
-	if e.seller == true {
-		commoditiesSold := CreateCommoditiesSold(entity.commoditiesSold)
+	if e.Seller == true {
+		commoditiesSold := CreateCommoditiesSold(e.commoditiesSold)
 		for _, curcomm := range commoditiesSold {
-			entityDTOBuilder = entityDTOBuilder.Sells(*curcomm.CommodityType, *curcomm.Key).Capacity(currcomm.cap).Used(currcomm.used)
+			entityDTOBuilder = entityDTOBuilder.Sells(*curcomm.CommodityType, *curcomm.Key).Capacity(*curcomm.Capacity).Used(*curcomm.Used)
 		}
 	}
 	entityDTO := entityDTOBuilder.Create()
@@ -166,8 +165,6 @@ func (nodeProbe *NodeProbe) SampleProbe() {
 	s_comms_array = append(s_comms_array, comm2)
 	b_comms_array = append(b_comms_array, comm3)
 	b_comms_array = append(b_comms_array, comm4)
-	nodeProbe.soldcommodities = s_comms_array
-	nodeProbe.boughtcommodities = b_comms_array
 
 	newSeller1 := &Entity_Params{
 		Buyer:             false,
@@ -216,7 +213,7 @@ func (kProbe *KubernetesProbe) getNodeProbe() *NodeProbe {
 
 // this function turns our NodeArray from the Kubernetes.NodeProbe as a []*sdk.EntityDTO
 func (kProbe *KubernetesProbe) getNodeEntityDTOs() []*sdk.EntityDTO {
-	kProbe.getNodeProbe().PopulateProbe()
+	kProbe.getNodeProbe().SampleProbe()
 	// create PM or VM EntityDTO
 	var entityDTOarray []*sdk.EntityDTO
 	for _, entity := range kProbe.getNodeProbe().entities {
@@ -313,6 +310,11 @@ func (h *MsgHandler) Validate(serverMsg *communicator.MediationServerMessage) {
 	return
 }
 
+func (h *MsgHandler) HandleAction(serverMsg *communicator.MediationServerMessage) {
+	glog.Infof("HandleAction called")
+	return
+}
+
 // This Method sends all the topology entities and relationships found at
 // this target to the VMTServer
 func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMessage) {
@@ -331,10 +333,6 @@ func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMes
 	clientMsg := communicator.NewClientMessageBuilder(messageID).SetDiscoveryResponse(discoveryResponse).Create()
 	h.wscommunicator.SendClientMessage(clientMsg)
 	glog.Infof("The client msg sent out is %++v", clientMsg)
-	return
-}
-
-func (h *MsgHandler) HandleAction(serverMsg *communicator.MediationServerMessage) {
 	return
 }
 
@@ -377,6 +375,8 @@ func (h *MsgHandler) CreateContainerInfo(localaddr string) *communicator.Contain
 //		    or  Entity() methods
 // The SupplyChainBuilder() function is only called once, in this function.
 func createSupplyChain() []*sdk.TemplateDTO {
+	//Commodity key is optional, when key is set, it serves as a constraint between seller and buyer
+	//for example, the buyer can only go to a seller that sells the commodity with the required key
 	optionalKey := "commodity_key"
 	vmsupplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
 	// Creates a Virtual Machine entity
@@ -386,12 +386,18 @@ func createSupplyChain() []*sdk.TemplateDTO {
 		Key:           &optionalKey,
 		CommodityType: &cpuType,
 	}
+
+	memType := sdk.CommodityDTO_MEM
+	memTemplateComm := &sdk.TemplateCommodity{
+		Key:           &optionalKey,
+		CommodityType: &memType,
+	}
 	// The Entity type for the Virtual Machine's commodity provider is defined by the Provider() method.
 	// The Commodity type for Virtual Machine's buying relationship is define by the Buys() method
-	vmsupplyChainNodeBuilder = vmsupplyChainNodeBuilder.Provider(sdk.EntityDTO_PHYSICAL_MACHINE, sdk.Provider_HOSTING).Buys(*cpuTemplateComm)
+	vmsupplyChainNodeBuilder = vmsupplyChainNodeBuilder.Provider(sdk.EntityDTO_PHYSICAL_MACHINE, sdk.Provider_HOSTING).Buys(*cpuTemplateComm).Buys(*memTemplateComm)
 	pmSupplyChainNodeBuilder := sdk.NewSupplyChainNodeBuilder()
 	// Creates a Physical Machine entity and sets the type of commodity it sells to CPU
-	pmSupplyChainNodeBuilder = pmSupplyChainNodeBuilder.Entity(sdk.EntityDTO_PHYSICAL_MACHINE).Selling(sdk.CommodityDTO_CPU, optionalKey)
+	pmSupplyChainNodeBuilder = pmSupplyChainNodeBuilder.Entity(sdk.EntityDTO_PHYSICAL_MACHINE).Selling(sdk.CommodityDTO_CPU, optionalKey).Selling(sdk.CommodityDTO_MEM, optionalKey)
 	// SupplyChain building
 	//  The last buyer in the supply chain is set as the top entity with the Top() method
 	// All other entities are added to the SupplyChainBuilder with the Entity() method
@@ -407,26 +413,23 @@ func main() {
 	//User defined settings
 	//
 	local_IP := "172.16.162.133"
-	VMTServer_IP := "160.39.162.134"
+	VMTServer_IP := "10.10.200.98"
 	TargetIdentifier := "userDefinedTarget"
-
-	//
-	//Do Not Modify below this line
-	//
+	OpsManagerUsername := "administrator"
+	OpsManagerPassword := "a"
 	localAddress := "ws://" + local_IP
 	VMTServerAddress := VMTServer_IP + ":8080"
 	wsCommunicator := new(communicator.WebSocketCommunicator)
+	wsCommunicator.SetDefaults()
 	wsCommunicator.VmtServerAddress = VMTServerAddress
 	wsCommunicator.LocalAddress = localAddress
-	wsCommunicator.ServerUsername = "vmtRemoteMediation"
-	wsCommunicator.ServerPassword = "vmtRemoteMediation"
 	loginInfo := new(ConnectionInfo)
-	loginInfo.OpsManagerUsername = "administrator"
-	loginInfo.OpsManagerPassword = "a"
 	loginInfo.Type = "Kubernetes"
 	loginInfo.Name = "k8s_vmt"
 	loginInfo.Username = "username"
 	loginInfo.Password = "password"
+	loginInfo.OpsManagerUsername = OpsManagerUsername
+	loginInfo.OpsManagerPassword = OpsManagerPassword
 	loginInfo.TargetIdentifier = TargetIdentifier
 	// ServerMessageHandler is implemented by MsgHandler
 	msgHandler := new(MsgHandler)
