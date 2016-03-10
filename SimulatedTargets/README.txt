@@ -26,5 +26,9 @@ To Modify the Default Supply Chain:
  set the supplyChainNodeBuilder object's EntityDTO_EntityType and other properties, add the 
  supplyChainNodeBuilder instance to the supplyChain Builder.
 
-
+To Modify the Default Topology:
+-The method SampleProbe() defines the targets topology (entities and their properties with relationships
+ to each other).
+-To add entities create new Entity_Params objects with the corresponding fields set and add the entities
+ to the entities array. Only one entities array is used in this method.
 

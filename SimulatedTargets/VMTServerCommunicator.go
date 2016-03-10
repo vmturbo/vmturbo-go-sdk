@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/golang/glog"
 	"github.com/vmturbo/vmturbo-go-sdk/communicator"
 	"github.com/vmturbo/vmturbo-go-sdk/sdk"
@@ -38,6 +37,7 @@ type VMTApiRequestHandler struct {
 
 // A function that creates an array of *sdk.CommodityDTO , this array defines all the commodities bought by a single
 // entity in the target supply chain.
+// returns an array of *sdk.CommodityDTO
 func CreateCommoditiesBought(comms_array []*Commodity_Params) []*sdk.CommodityDTO {
 	var commoditiesBought []*sdk.CommodityDTO
 	for _, comm := range comms_array {
@@ -63,6 +63,7 @@ func CreateCommoditiesSold(comms_array []*Commodity_Params) []*sdk.CommodityDTO 
 	return commoditiesSold
 }
 
+// Creates reconciliation MetaData
 func (nodeProbe *NodeProbe) generateReconcilationMetaData() *sdk.EntityDTO_ReplacementEntityMetaData {
 	replacementEntityMetaDataBuilder := sdk.NewReplacementEntityMetaDataBuilder()
 	replacementEntityMetaDataBuilder.Matching("IP")
@@ -71,40 +72,37 @@ func (nodeProbe *NodeProbe) generateReconcilationMetaData() *sdk.EntityDTO_Repla
 	return metaData
 }
 
-func (nodeProbe *NodeProbe) buildPMEntityDTO(PM_id, displayName string, commoditiesSold []*sdk.CommodityDTO) *sdk.EntityDTO {
-	cpuUsed := float64(0)
-	nodeCpuCapacity := float64(1000)
-	entityDTOBuilder := sdk.NewEntityDTOBuilder(sdk.EntityDTO_PHYSICAL_MACHINE, PM_id)
-	entityDTOBuilder.DisplayName(displayName)
-
-	curcomm := commoditiesSold[0]
-	entityDTOBuilder = entityDTOBuilder.Sells(*curcomm.CommodityType, *curcomm.Key).Capacity(float64(nodeCpuCapacity)).Used(cpuUsed)
+// This function builds an EntityDTO object from information provided from the one of the entities at discovery time.
+// It returns an *sdk.EntityDTO which points to the EntityDTO created.
+func (e *Entity_Params) buildEntityDTO() *sdk.EntityDTO {
+	entityDTOBuilder := sdk.NewEntityDTOBuilder(entity.entityType, entity.entityID)
+	entityDTOBuilder.DisplayName(entity.entityDisplayName)
+	if e.buyer == true {
+		commoditiesbought := CreateCommoditiesBought(entity.commoditiesBought)
+		entityDTOBuilder = entityDTOBuilder.SetProvider(entity.providerType, entity.providerID)
+		entityDTOBuilder.BuysCommodities(commoditiesbought)
+	}
+	if e.seller == true {
+		commoditiesSold := CreateCommoditiesSold(entity.commoditiesSold)
+		for _, curcomm := range commoditiesSold {
+			entityDTOBuilder = entityDTOBuilder.Sells(*curcomm.CommodityType, *curcomm.Key).Capacity(currcomm.cap).Used(currcomm.used)
+		}
+	}
 	entityDTO := entityDTOBuilder.Create()
 	return entityDTO
 }
 
-func (nodeProbe *NodeProbe) buildVMEntityDTO(VM_id, displayName, provider string, commoditiesbought []*sdk.CommodityDTO) *sdk.EntityDTO {
-	entityDTOBuilder := sdk.NewEntityDTOBuilder(sdk.EntityDTO_VIRTUAL_MACHINE, VM_id)
-	entityDTOBuilder.DisplayName(displayName)
-
-	entityDTOBuilder = entityDTOBuilder.SetProvider(sdk.EntityDTO_PHYSICAL_MACHINE, provider)
-	entityDTOBuilder.BuysCommodities(commoditiesbought)
-	entityDTO := entityDTOBuilder.Create()
-
-	return entityDTO
-}
-
+// This struct holds the array of Entity structs that are found in the simulated target
 type NodeProbe struct {
-	// nodesGetter func
-	soldcommodities   []*Commodity_Params
-	boughtcommodities []*Commodity_Params
-	entities          []*Entity_Params
+	entities []*Entity_Params
 }
 
+// A struct that contains a Node probe, there is one Kubernetes probe and one NodeProbe for each target
 type KubernetesProbe struct {
 	nodeProbe *NodeProbe
 }
 
+// Struct that holds parameters for each commodity sold or bought by a given entity
 type Commodity_Params struct {
 	commType sdk.CommodityDTO_CommodityType
 	commKey  string
@@ -112,6 +110,7 @@ type Commodity_Params struct {
 	cap      int
 }
 
+// Struct that holds a given entity's identifying and property information
 type Entity_Params struct {
 	Buyer             bool
 	Seller            bool
@@ -121,9 +120,21 @@ type Entity_Params struct {
 	commoditiesSold   []*Commodity_Params
 	commoditiesBought []*Commodity_Params
 	providerID        string
+	providerType      sdk.EntityDTO_EntityType
 }
 
-func (nodeProbe *NodeProbe) PopulateProbe() {
+// Method that creates an array of entities found at this target
+// Creates arrays of bought/sold commodities for each entity
+// Sets the entities field of the NodeProbe it is called on to the
+// newly created entity array
+// Default: array of sold commodities contains a sdk.CommodityDTO_CPU
+//	    and a sdk.CommodityDTO_MEM
+//	    array of bought commodities contains a sdk.CommodityDTO_CPU
+// 	    and asdk.CommodityDTO_MEM
+//          Array of Entities contains 2 sellers, selling the same commodities
+//          and 3 buyers, two buyers buying from seller 1 and one buyer buying from
+//          seller 2.
+func (nodeProbe *NodeProbe) SampleProbe() {
 	var s_comms_array []*Commodity_Params
 	var b_comms_array []*Commodity_Params
 	var entities []*Entity_Params
@@ -198,48 +209,41 @@ func (nodeProbe *NodeProbe) PopulateProbe() {
 	nodeProbe.entities = entities
 }
 
+// this getter method returns the NodeProbe contained in the KubernetesProbe
 func (kProbe *KubernetesProbe) getNodeProbe() *NodeProbe {
 	return kProbe.nodeProbe
 }
 
-/*this function turns our NodeArray from the Kubernetes.NodeProbe as a []*sdk.EntityDTO */
+// this function turns our NodeArray from the Kubernetes.NodeProbe as a []*sdk.EntityDTO
 func (kProbe *KubernetesProbe) getNodeEntityDTOs() []*sdk.EntityDTO {
 	kProbe.getNodeProbe().PopulateProbe()
 	// create PM or VM EntityDTO
 	var entityDTOarray []*sdk.EntityDTO
 	for _, entity := range kProbe.getNodeProbe().entities {
-		// here the only sellers are Physical Machines
-		if entity.Seller == true {
-			// we call createCommoditySold to get []*sdk.CommodityDTO
-			commoditiesDTOSold := CreateCommoditiesSold(entity.commoditiesSold)
-			newEntityDTO := kProbe.getNodeProbe().buildPMEntityDTO(entity.entityID, entity.entityDisplayName, commoditiesDTOSold)
-			entityDTOarray = append(entityDTOarray, newEntityDTO)
-		}
-		if entity.Buyer == true {
-			commoditiesDTOBought := CreateCommoditiesBought(entity.commoditiesBought)
-			newEntityDTO := kProbe.getNodeProbe().buildVMEntityDTO(entity.entityID, entity.entityDisplayName, entity.providerID, commoditiesDTOBought)
-			entityDTOarray = append(entityDTOarray, newEntityDTO)
-		}
+		// we call createCommoditySold to get []*sdk.CommodityDTO
+		newEntityDTO := entity.buildEntityDTO()
+		entityDTOarray = append(entityDTOarray, newEntityDTO)
 	}
 
 	return entityDTOarray
 }
 
+// this helper function servers to send REST api calls to the VMTServer using opsmanager authentication
 func (vmtapi *VMTApiRequestHandler) vmtApiPost(postPath, requestStr string) (*http.Response, error) {
 	fullUrl := "http://" + vmtapi.vmtServerAddr + "/vmturbo/api" + postPath + requestStr
-	fmt.Println("Log: The ful Url is " + fullUrl)
 	req, err := http.NewRequest("POST", fullUrl, nil)
 	req.SetBasicAuth(vmtapi.opsManagerUsername, vmtapi.opsManagerPassword)
 	client := &http.Client{}
 	response, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Log: error getting response")
+		glog.Infof("Log: error getting response")
 		return nil, err
 	}
 	defer response.Body.Close()
 	return response, nil
 }
 
+// Method used for adding a Target to a VMTServer
 func (h *MsgHandler) AddTarget() {
 
 	var requestDataB bytes.Buffer
@@ -260,17 +264,15 @@ func (h *MsgHandler) AddTarget() {
 	str := requestDataB.String()
 	postReply, err := h.vmtapi.vmtApiPost("/externaltargets", str)
 	if err != nil {
-		fmt.Println(" postReply error")
+		glog.Infof(" postReply error")
 	}
-	fmt.Println("Printing AddTarget postReply:")
-	fmt.Println(postReply)
 
 	if postReply.Status != "200 OK" {
-		fmt.Println(" postReplyMessage error")
+		glog.Infof(" postReplyMessage error")
 	}
-	fmt.Println("Add target response is " + postReply.Status)
 }
 
+// This Method validates our target which was previously added to the VMTServer
 func (h *MsgHandler) Validate(serverMsg *communicator.MediationServerMessage) {
 	// messageID is a int32 , if nil then 0
 	messageID := serverMsg.GetMessageID()
@@ -305,16 +307,14 @@ func (h *MsgHandler) Validate(serverMsg *communicator.MediationServerMessage) {
 		return
 	}
 
-	fmt.Println("Printing Validate postReply:")
-	fmt.Println(postReply)
 	if postReply.Status != "200 OK" {
 		glog.Infof("Validate reply came in with error")
 	}
 	return
 }
 
-//
-//
+// This Method sends all the topology entities and relationships found at
+// this target to the VMTServer
 func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMessage) {
 
 	messageID := serverMsg.GetMessageID()
@@ -331,7 +331,6 @@ func (h *MsgHandler) DiscoverTopology(serverMsg *communicator.MediationServerMes
 	clientMsg := communicator.NewClientMessageBuilder(messageID).SetDiscoveryResponse(discoveryResponse).Create()
 	h.wscommunicator.SendClientMessage(clientMsg)
 	glog.Infof("The client msg sent out is %++v", clientMsg)
-	fmt.Println(clientMsg)
 	return
 }
 
@@ -354,7 +353,6 @@ func (h *MsgHandler) CreateContainerInfo(localaddr string) *communicator.Contain
 	probeType := h.cInfo.Type
 	probeCat := "Container"
 	templateDTOs := createSupplyChain()
-	fmt.Println(templateDTOs)
 	probeInfo := communicator.NewProbeInfoBuilder(probeType, probeCat, templateDTOs, acctDefProps).Create()
 	// Create container
 	containerInfo := new(communicator.ContainerInfo)
