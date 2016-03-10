@@ -1,13 +1,15 @@
 package communicator
 
 import (
-	"encoding/base64"
-	"net/http"
-	"time"
+	//	"errors" // Pam
 
+	"encoding/base64"
+	"fmt"
 	"github.com/golang/glog"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/websocket"
+	"net/http"
+	"time"
 )
 
 // An interface to handle server request.
@@ -25,6 +27,12 @@ type WebSocketCommunicator struct {
 	ServerPassword   string
 	ServerMsgHandler ServerMessageHandler
 	ws               *websocket.Conn
+}
+
+// Set Default values in WebSocketCommunicator instance
+func (wsc *WebSocketCommunicator) SetDefaults() {
+	wsc.ServerUsername = "vmtRemoteMediation"
+	wsc.ServerPassword = "vmtRemoteMediation"
 }
 
 // Handle server message according to serverMessage type
@@ -102,15 +110,20 @@ func (wsc *WebSocketCommunicator) RegisterAndListen(containerInfo *ContainerInfo
 	if err != nil {
 		glog.Fatal(err)
 	}
-	usrpasswd := []byte(wsc.ServerUsername + ":" + wsc.ServerPassword)
-
-	config.Header = http.Header{
-		"Authorization": {"Basic " + base64.StdEncoding.EncodeToString(usrpasswd)},
-	}
+	message := wsc.ServerUsername + ":" + wsc.ServerPassword
+	usrpasswd := make([]byte, base64.StdEncoding.EncodedLen(len(message)))
+	base64.StdEncoding.Encode(usrpasswd, []byte(message))
+	config.Header = make(http.Header)
+	fmt.Println("http.Header created ") //pam
+	//	config.Header["Authorization"] = []string{"Basic administrator:a"}
+	config.Header.Set("Authorization", "Basic "+string(usrpasswd))
 	webs, err := websocket.DialConfig(config)
-
+	fmt.Println("DialConfig returned")
+	//	webs := new(websocket.Conn) // Pam
+	//	error1 := errors.New("Pam error") //Pam
 	// webs, err := websocket.Dial(vmtServerUrl, "", localAddr)
 	if err != nil {
+		fmt.Println("error1 is not nil") // Pam
 		glog.Error(err)
 		if webs == nil {
 			glog.Error("The websocket is null, reset")
@@ -118,7 +131,7 @@ func (wsc *WebSocketCommunicator) RegisterAndListen(containerInfo *ContainerInfo
 		wsc.CloseAndRegisterAgain(containerInfo)
 	}
 	wsc.ws = webs
-
+	fmt.Println("Send registration info")
 	glog.V(3).Infof("Send registration info")
 	wsc.SendRegistrationMessage(containerInfo)
 
