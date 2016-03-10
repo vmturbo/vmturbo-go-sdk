@@ -4,7 +4,7 @@ type CommodtiyDTOBuilder struct {
 	commDTO *CommodityDTO
 }
 
-func NewCommodtiyDTOBuilder(commodityType CommodityDTO_CommodityType) *CommodtiyDTOBuilder {
+func NewCommodityDTOBuilder(commodityType CommodityDTO_CommodityType) *CommodtiyDTOBuilder {
 	commodityDTO := new(CommodityDTO)
 	commodityDTO.CommodityType = &commodityType
 	return &CommodtiyDTOBuilder{

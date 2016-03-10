@@ -1,12 +1,13 @@
 
 
-This go program sets up a websocket connection as a simulated VMT target to a VMTServer.
-Once the connection is established, a simulated Target Supply Chain definition is 
-created and sent to the server.
-The default simulated Supply Chain definition contains a seller entity of type Physical Machine
+This is a example of how to write a probe using VMTurbo Go SDK. This example sets up a websocket 
+connection as a simulated VMT target to a VMTServer, once the connection is established, a simulated 
+Target Supply Chain definition is created and sent to the server. You can refer to the example and 
+create any type of supply chain based on your infrastructure.
+This default simulated Supply Chain definition contains a seller entity of type Physical Machine
 and a buyer entity of type Virtual Machine. 
 The default topology which will be discovered by the VMTServer is 2 Physical Machine sellers;
-the first PM sells two different virtual machines and the second PM sells to one virtual machine.
+the first PM sells to two different virtual machines and the second PM sells to one virtual machine.
 
 
 

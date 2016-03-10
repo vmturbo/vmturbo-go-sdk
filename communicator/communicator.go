@@ -29,6 +29,12 @@ type WebSocketCommunicator struct {
 	ws               *websocket.Conn
 }
 
+// Set Default values in WebSocketCommunicator instance
+func (wsc *WebSocketCommunicator) SetDefaults() {
+	wsc.ServerUsername = "vmtRemoteMediation"
+	wsc.ServerPassword = "vmtRemoteMediation"
+}
+
 // Handle server message according to serverMessage type
 func (wsc *WebSocketCommunicator) handleServerMessage(serverMsg *MediationServerMessage) {
 	if wsc.ServerMsgHandler == nil {
