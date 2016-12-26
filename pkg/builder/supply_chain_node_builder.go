@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/golang/glog"
-
 	"github.com/vmturbo/vmturbo-go-sdk/pkg/proto"
 )
 
@@ -153,7 +151,6 @@ func (scnb *SupplyChainNodeBuilder) Link(extEntityLink *proto.ExternalEntityLink
 		buyer := extEntityLink.GetBuyerRef()
 		linkProp.Key = &buyer
 	} else {
-		glog.Errorf("Template entity is not one of the entity in this external link")
 		return scnb
 	}
 	linkProp.Value = extEntityLink
